@@ -1,0 +1,223 @@
+version: '3.8'
+
+# Example Docker Compose file for MediaWiki Managed
+# This demonstrates various configuration options
+
+services:
+  mediawiki:
+    image: ghcr.io/nkcx/mediawiki-docker:1.43
+    container_name: mediawiki
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      # Required volumes for persistence
+      - config:/config
+      - extensions:/extensions
+      - skins:/skins
+      - uploads:/var/www/html/images
+    
+    environment:
+      # ============================================
+      # CORE DATABASE CONFIGURATION (Required)
+      # ============================================
+      MW_DB_SERVER: database
+      MW_DB_NAME: mediawiki
+      MW_DB_USER: wikiuser
+      MW_DB_PASSWORD: ${DB_PASSWORD}  # Set in .env file
+      MW_DB_TYPE: mysql
+      
+      # ============================================
+      # SITE CONFIGURATION (Required)
+      # ============================================
+      MW_SITE_NAME: "Combined Transport Wiki"
+      MW_SITE_LANG: en
+      MW_SITE_SERVER: "http://localhost:8080"
+      
+      # ============================================
+      # EMAIL CONFIGURATION (Optional)
+      # ============================================
+      MW_EMERGENCY_CONTACT: "admin@example.com"
+      MW_PASSWORD_SENDER: "noreply@example.com"
+      MW_ENABLE_EMAIL: "true"
+      MW_ENABLE_USER_EMAIL: "true"
+      
+      # ============================================
+      # UPLOADS CONFIGURATION (Optional)
+      # ============================================
+      MW_ENABLE_UPLOADS: "true"
+      MW_LOGO: "/images/logo.png"
+      
+      # ============================================
+      # SECURITY CONFIGURATION (Optional)
+      # ============================================
+      MW_SECRET_KEY: ${MW_SECRET_KEY}  # Set in .env or auto-generate
+      MW_ALLOW_ANONYMOUS_EDIT: "false"
+      
+      # ============================================
+      # EXTENSIONS (Line-separated list)
+      # ============================================
+      MW_EXTENSIONS: |
+        Cite
+        ParserFunctions
+        InputBox
+        Scribunto
+        VisualEditor
+        SyntaxHighlight_GeSHi
+      
+      # Extension-specific configuration
+      # Scribunto needs executable permissions set
+      MW_EXT_SCRIBUNTO_POST_INSTALL: |
+        cd includes/engines/LuaStandalone/binaries && chmod +x lua*_linux_*/lua
+      
+      # VisualEditor needs submodules
+      MW_EXT_VISUALEDITOR_POST_INSTALL: "git submodule update --init"
+      
+      # Example: Custom extension from GitHub
+      # MW_EXT_MYCUSTOMEXTENSION_REPO: "https://github.com/me/MyExtension"
+      # MW_EXT_MYCUSTOMEXTENSION_BRANCH: "main"
+      # MW_EXT_MYCUSTOMEXTENSION_POST_INSTALL: "composer install --no-dev"
+      
+      # ============================================
+      # COMPOSER PACKAGES (Optional)
+      # ============================================
+      # Uncomment to install Semantic MediaWiki and PageForms
+      # MW_COMPOSER_PACKAGES: |
+      #   mediawiki/semantic-media-wiki:~4.0
+      #   mediawiki/page-forms:^5.3
+      
+      # ============================================
+      # SKINS (Line-separated list)
+      # ============================================
+      MW_SKINS: |
+        Vector
+        Timeless
+      
+      MW_SKIN_DEFAULT: "Vector"
+      
+      # ============================================
+      # CUSTOM CONFIGURATION
+      # ============================================
+      # Raw PHP code appended to LocalSettings.php
+      MW_CONFIG_APPEND: |
+        # Advanced upload settings
+        $wgFileExtensions = array_merge($wgFileExtensions, ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+        $wgMaxUploadSize = 104857600; // 100MB
+        $wgUseImageMagick = true;
+        $wgImageMagickConvertCommand = '/usr/bin/convert';
+        
+        # Restrict editing to logged-in users only
+        $wgGroupPermissions['*']['edit'] = false;
+        $wgGroupPermissions['user']['edit'] = true;
+        
+        # Allow account creation
+        $wgGroupPermissions['*']['createaccount'] = true;
+        
+        # Custom namespace for documentation
+        define("NS_DOCUMENTATION", 3000);
+        define("NS_DOCUMENTATION_TALK", 3001);
+        $wgExtraNamespaces[NS_DOCUMENTATION] = "Documentation";
+        $wgExtraNamespaces[NS_DOCUMENTATION_TALK] = "Documentation_talk";
+        $wgNamespacesWithSubpages[NS_DOCUMENTATION] = true;
+        
+        # VisualEditor configuration
+        $wgDefaultUserOptions['visualeditor-enable'] = 1;
+        $wgVisualEditorAvailableNamespaces = [
+          NS_MAIN => true,
+          NS_USER => true,
+          NS_PROJECT => true,
+          NS_DOCUMENTATION => true
+        ];
+        
+        # Performance settings
+        $wgMainCacheType = CACHE_ACCEL;
+        $wgMemCachedServers = [];
+        $wgCacheDirectory = "/tmp/cache";
+        
+        # Uncomment for Semantic MediaWiki configuration
+        # enableSemantics('example.com');
+        # $smwgDefaultStore = 'SMWSQLStore3';
+        # $smwgQMaxSize = 5000;
+      
+      # ============================================
+      # AUTOMATION FLAGS
+      # ============================================
+      MW_AUTO_UPDATE: "true"  # Run update.php on startup
+    
+    depends_on:
+      database:
+        condition: service_healthy
+    
+    networks:
+      - mediawiki-network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  database:
+    image: mariadb:10.11
+    container_name: mediawiki-db
+    restart: unless-stopped
+    volumes:
+      - db-data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: mediawiki
+      MYSQL_USER: wikiuser
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    networks:
+      - mediawiki-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Optional: Watchtower for automatic updates
+  # Uncomment to enable automatic image updates
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   container_name: watchtower
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --schedule "0 0 2 * * *" --cleanup  # Check daily at 2 AM
+  #   networks:
+  #     - mediawiki-network
+
+volumes:
+  config:
+    driver: local
+  extensions:
+    driver: local
+  skins:
+    driver: local
+  uploads:
+    driver: local
+  db-data:
+    driver: local
+
+networks:
+  mediawiki-network:
+    driver: bridge
+
+# ==============================================
+# ENVIRONMENT VARIABLE REFERENCE
+# ==============================================
+# Create a .env file in the same directory with:
+#
+# DB_PASSWORD=your_secure_password_here
+# DB_ROOT_PASSWORD=your_root_password_here
+# MW_SECRET_KEY=your_64_character_secret_key_here
+#
+# Generate secure passwords:
+#   openssl rand -base64 32
+#
+# Generate secret key:
+#   openssl rand -hex 32
+# ==============================================
