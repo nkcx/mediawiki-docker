@@ -15,4 +15,15 @@ Currently, Mediawiki "requires" that compatibility is specified through an exten
 As such, we need a way to better manage versioning, extensions/themes, and compatibility for the Mediawiki suite.
 
 ## Approach
-All data about extensions/themes should be configurable via a `docker-compose` file. Preferably, users can simply provide a list of extensions, and the `entrypoint` script will take care of installing these extensions by determining the correct way to install them (git vs composer) by querying the relevant 
+All data about extensions/themes should be configurable via a `docker-compose` file. Preferably, users can simply provide a list of extensions, and the `entrypoint` script will take care of installing these extensions by determining the correct way to install them (git vs composer) by querying the relevant Mediawiki Extension page.
+
+Versions of this container are tagged based on the Mediawiki release: e.g., REL1_43 for version 1.43.
+
+This container only tracks LTS versions of Mediawiki.
+
+## Acknowledgements
+The work on this docker container is inspired by and draws on the work from these amazing projects:
+
+* Official Mediawiki Docker Container - https://github.com/wikimedia/mediawiki-docker
+* University of British Columbia Mediawiki Docker Container - https://github.com/ubc/mediawiki-docker
+* Libre Space Mediawiki Container - https://gitlab.com/librespacefoundation/ops/docker-mediawiki
