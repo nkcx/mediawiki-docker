@@ -583,6 +583,8 @@ The image can be configured to auto-rebuild when the upstream MediaWiki image up
 Issues and pull requests welcome at: https://github.com/nkcx/mediawiki-docker
 
 ## Acknowledgements
+Most of the code in this repository was written through Claude Code.
+
 The work on this docker container is inspired by and draws on the work from these amazing projects:
 
 * Official Mediawiki Docker Container - https://github.com/wikimedia/mediawiki-docker
