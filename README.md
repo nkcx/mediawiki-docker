@@ -137,7 +137,7 @@ MW_EXTENSIONS: |
 
 **Default Behavior**:
 - Repository: `https://gerrit.wikimedia.org/r/mediawiki/extensions/<ExtensionName>`
-- Branch: Matches MediaWiki version (e.g., `REL1_39`)
+- Branch: Matches MediaWiki version (e.g., `REL1_43`)
 - Load: `wfLoadExtension('<ExtensionName>');`
 
 #### Extension-Specific Overrides
