@@ -134,16 +134,9 @@ build_desired_state() {
     declare -gA DESIRED_SKINS
     declare -gA DESIRED_COMPOSER
     declare -gA COMPOSER_PROVIDED_EXTENSIONS
-
-    # Track whether each env var is configured (non-empty).
-    # When unset/empty, we preserve existing state instead of treating it as "remove all."
-    declare -g EXTENSIONS_CONFIGURED=false
-    declare -g SKINS_CONFIGURED=false
-    declare -g COMPOSER_CONFIGURED=false
-
+    
     # Parse MW_COMPOSER_PACKAGES first to know which extensions come from Composer
     if [ -n "${MW_COMPOSER_PACKAGES}" ]; then
-        COMPOSER_CONFIGURED=true
         while IFS= read -r pkg; do
             [[ -z "$pkg" || "$pkg" =~ ^[[:space:]]*# ]] && continue
             pkg=$(echo "$pkg" | xargs)
@@ -166,7 +159,6 @@ build_desired_state() {
     
     # Parse MW_EXTENSIONS
     if [ -n "${MW_EXTENSIONS}" ]; then
-        EXTENSIONS_CONFIGURED=true
         while IFS= read -r ext; do
             [[ -z "$ext" || "$ext" =~ ^[[:space:]]*# ]] && continue
             ext=$(echo "$ext" | xargs)
@@ -176,7 +168,6 @@ build_desired_state() {
     
     # Parse MW_SKINS
     if [ -n "${MW_SKINS}" ]; then
-        SKINS_CONFIGURED=true
         while IFS= read -r skin; do
             [[ -z "$skin" || "$skin" =~ ^[[:space:]]*# ]] && continue
             skin=$(echo "$skin" | xargs)
@@ -188,35 +179,27 @@ build_desired_state() {
 # Remove extensions/skins no longer in desired state
 cleanup_removed_items() {
     log "Checking for removed extensions/skins..."
-
+    
     local removed=0
-
-    # Only clean up extensions if MW_EXTENSIONS was explicitly configured
-    if [ "$EXTENSIONS_CONFIGURED" = true ]; then
-        for name in "${!PREV_EXTENSIONS[@]}"; do
-            if [ -z "${DESIRED_EXTENSIONS[$name]}" ]; then
-                log "  Removing extension: $name (no longer requested)"
-                rm -rf "/extensions/$name"
-                removed=1
-            fi
-        done
-    else
-        log "  MW_EXTENSIONS not set — preserving existing extensions"
-    fi
-
-    # Only clean up skins if MW_SKINS was explicitly configured
-    if [ "$SKINS_CONFIGURED" = true ]; then
-        for name in "${!PREV_SKINS[@]}"; do
-            if [ -z "${DESIRED_SKINS[$name]}" ]; then
-                log "  Removing skin: $name (no longer requested)"
-                rm -rf "/skins/$name"
-                removed=1
-            fi
-        done
-    else
-        log "  MW_SKINS not set — preserving existing skins"
-    fi
-
+    
+    # Remove extensions
+    for name in "${!PREV_EXTENSIONS[@]}"; do
+        if [ -z "${DESIRED_EXTENSIONS[$name]}" ]; then
+            log "  Removing extension: $name (no longer requested)"
+            rm -rf "/extensions/$name"
+            removed=1
+        fi
+    done
+    
+    # Remove skins
+    for name in "${!PREV_SKINS[@]}"; do
+        if [ -z "${DESIRED_SKINS[$name]}" ]; then
+            log "  Removing skin: $name (no longer requested)"
+            rm -rf "/skins/$name"
+            removed=1
+        fi
+    done
+    
     if [ $removed -eq 0 ]; then
         log "  No items to remove"
     fi
@@ -324,8 +307,13 @@ install_git_extension() {
 
 # Process Composer packages
 process_composer_env() {
-    if [ "$COMPOSER_CONFIGURED" != true ]; then
-        # MW_COMPOSER_PACKAGES not set — preserve existing state
+    if [ -z "${MW_COMPOSER_PACKAGES}" ]; then
+        # Clean up composer.local.json if no packages requested
+        if [ -f "$MEDIAWIKI_ROOT/composer.local.json" ]; then
+            log "Removing Composer configuration (no packages requested)..."
+            rm -f "$MEDIAWIKI_ROOT/composer.local.json"
+        fi
+        > "$COMPOSER_MANIFEST"
         return
     fi
     
@@ -388,8 +376,9 @@ COMPOSER_END
 
 # Process extensions from environment
 process_extensions() {
-    if [ "$EXTENSIONS_CONFIGURED" != true ]; then
-        # MW_EXTENSIONS not set — preserve existing manifest and extensions
+    if [ -z "${MW_EXTENSIONS}" ]; then
+        # Clear manifest if no extensions requested
+        > "$EXTENSIONS_MANIFEST"
         return
     fi
     
@@ -527,8 +516,9 @@ install_git_skin() {
 
 # Process skins from environment
 process_skins() {
-    if [ "$SKINS_CONFIGURED" != true ]; then
-        # MW_SKINS not set — preserve existing manifest and skins
+    if [ -z "${MW_SKINS}" ]; then
+        # Clear manifest if no skins requested
+        > "$SKINS_MANIFEST"
         return
     fi
     
