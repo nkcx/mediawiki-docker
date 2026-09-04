@@ -557,74 +557,87 @@ process_skins() {
 # Generate LocalSettings.php from environment variables
 generate_localsettings() {
     log "Generating LocalSettings.php from environment variables..."
-    
+
     mkdir -p /config
-    
-    cat > /config/LocalSettings.php << EOF
+
+    # Quoted heredoc ('EOF') prevents shell expansion — PHP $variables are written literally
+    cat > /config/LocalSettings.php << 'EOF'
 <?php
 # Generated from environment variables
 # Configuration is 100% managed via docker-compose.yml
 
 # Database
-\$wgDBserver = getenv('MW_DB_SERVER');
-\$wgDBname = getenv('MW_DB_NAME');
-\$wgDBuser = getenv('MW_DB_USER');
-\$wgDBpassword = getenv('MW_DB_PASSWORD');
-\$wgDBtype = getenv('MW_DB_TYPE') ?: 'mysql';
-\$wgDBprefix = getenv('MW_DB_PREFIX') ?: '';
+$wgDBserver = getenv('MW_DB_SERVER');
+$wgDBname = getenv('MW_DB_NAME');
+$wgDBuser = getenv('MW_DB_USER');
+$wgDBpassword = getenv('MW_DB_PASSWORD');
+$wgDBtype = getenv('MW_DB_TYPE') ?: 'mysql';
+$wgDBprefix = getenv('MW_DB_PREFIX') ?: '';
 
 # Site
-\$wgSitename = getenv('MW_SITE_NAME');
-\$wgLanguageCode = getenv('MW_SITE_LANG') ?: 'en';
-\$wgServer = getenv('MW_SITE_SERVER');
+$wgSitename = getenv('MW_SITE_NAME');
+$wgLanguageCode = getenv('MW_SITE_LANG') ?: 'en';
+$wgServer = getenv('MW_SITE_SERVER');
 
 # Email
-\$wgEmergencyContact = getenv('MW_EMERGENCY_CONTACT') ?: '';
-\$wgPasswordSender = getenv('MW_PASSWORD_SENDER') ?: '';
-\$wgEnableEmail = getenv('MW_ENABLE_EMAIL') === 'true';
-\$wgEnableUserEmail = getenv('MW_ENABLE_USER_EMAIL') === 'true';
+$wgEmergencyContact = getenv('MW_EMERGENCY_CONTACT') ?: '';
+$wgPasswordSender = getenv('MW_PASSWORD_SENDER') ?: '';
+$wgEnableEmail = getenv('MW_ENABLE_EMAIL') === 'true';
+$wgEnableUserEmail = getenv('MW_ENABLE_USER_EMAIL') === 'true';
 
 # Uploads
-\$wgEnableUploads = getenv('MW_ENABLE_UPLOADS') === 'true';
-\$wgLogo = getenv('MW_LOGO') ?: '';
-
-# Secret keys (persisted across restarts in /extensions/.secrets)
-# These are auto-generated on first boot if not provided via MW_SECRET_KEY/MW_UPGRADE_KEY
-\$wgSecretKey = '${EFFECTIVE_SECRET_KEY}';
-\$wgUpgradeKey = '${EFFECTIVE_UPGRADE_KEY}';
+$wgEnableUploads = getenv('MW_ENABLE_UPLOADS') === 'true';
+$wgLogo = getenv('MW_LOGO') ?: '';
 
 # Authentication
-\$wgAuthenticationTokenVersion = "1";
+$wgAuthenticationTokenVersion = "1";
 
 # Permissions
-\$wgGroupPermissions['*']['edit'] = getenv('MW_ALLOW_ANONYMOUS_EDIT') === 'true';
+$wgGroupPermissions['*']['edit'] = getenv('MW_ALLOW_ANONYMOUS_EDIT') === 'true';
 
+EOF
+
+    # Secret keys need shell expansion — separate unquoted heredoc with escaped PHP $
+    cat >> /config/LocalSettings.php << EOF
+
+# Secret keys (persisted across restarts in /extensions/.secrets)
+\$wgSecretKey = '${EFFECTIVE_SECRET_KEY}';
+\$wgUpgradeKey = '${EFFECTIVE_UPGRADE_KEY}';
 EOF
 
     # Add skin loads
     if [ -f /tmp/skin_loads.txt ]; then
-        echo "" >> /config/LocalSettings.php
-        echo "# Skins" >> /config/LocalSettings.php
+        printf '\n# Skins\n' >> /config/LocalSettings.php
         cat /tmp/skin_loads.txt >> /config/LocalSettings.php
     fi
-    
+
     # Set default skin
     if [ -n "${MW_SKIN_DEFAULT}" ]; then
-        echo "\$wgDefaultSkin = '${MW_SKIN_DEFAULT}';" >> /config/LocalSettings.php
+        printf "\$wgDefaultSkin = '%s';\n" "${MW_SKIN_DEFAULT}" >> /config/LocalSettings.php
     fi
 
     # Add extension loads
     if [ -f /tmp/extension_loads.txt ]; then
-        echo "" >> /config/LocalSettings.php
-        echo "# Extensions" >> /config/LocalSettings.php
+        printf '\n# Extensions\n' >> /config/LocalSettings.php
         cat /tmp/extension_loads.txt >> /config/LocalSettings.php
     fi
-    
-    # Append custom config
+
+    # Append custom config from file (recommended for complex PHP config with $ variables)
+    if [ -n "${MW_CONFIG_FILE}" ]; then
+        if [ -f "${MW_CONFIG_FILE}" ]; then
+            log "Appending custom config from ${MW_CONFIG_FILE}"
+            printf '\n# Custom Configuration (from %s)\n' "${MW_CONFIG_FILE}" >> /config/LocalSettings.php
+            cat "${MW_CONFIG_FILE}" >> /config/LocalSettings.php
+        else
+            log "WARNING: MW_CONFIG_FILE set to '${MW_CONFIG_FILE}' but file not found"
+        fi
+    fi
+
+    # Append custom config from environment variable
+    # In docker-compose.yml, literal $ must be written as $$ due to Compose interpolation
     if [ -n "${MW_CONFIG_APPEND}" ]; then
-        echo "" >> /config/LocalSettings.php
-        echo "# Custom Configuration" >> /config/LocalSettings.php
-        echo "${MW_CONFIG_APPEND}" >> /config/LocalSettings.php
+        printf '\n# Custom Configuration\n' >> /config/LocalSettings.php
+        printf '%s\n' "${MW_CONFIG_APPEND}" >> /config/LocalSettings.php
     fi
 }
 

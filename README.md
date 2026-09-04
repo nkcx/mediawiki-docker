@@ -280,35 +280,69 @@ environment:
 
 ### Custom Configuration
 
+#### MW_CONFIG_FILE (Recommended)
+
+**Format**: Path to a PHP file mounted into the container
+
+The recommended way to add custom PHP configuration. Mount a PHP file into the container and set `MW_CONFIG_FILE` to its path. The file contents are appended to `LocalSettings.php` — do not include a `<?php` opening tag.
+
+**Example**:
+
+Create `custom-settings.php`:
+```php
+# Advanced upload settings
+$wgEnableUploads = true;
+$wgUseImageMagick = true;
+$wgImageMagickConvertCommand = '/usr/bin/convert';
+$wgFileExtensions = array_merge($wgFileExtensions, ['pdf', 'doc', 'docx', 'xls', 'xlsx']);
+$wgMaxUploadSize = 104857600; // 100MB
+
+# Restrict editing to logged-in users
+$wgGroupPermissions['*']['edit'] = false;
+$wgGroupPermissions['user']['edit'] = true;
+```
+
+Mount it in `docker-compose.yml`:
+```yaml
+services:
+  mediawiki:
+    volumes:
+      - ./custom-settings.php:/custom-config/custom.php:ro
+    environment:
+      MW_CONFIG_FILE: /custom-config/custom.php
+```
+
 #### MW_CONFIG_APPEND
 
 **Format**: Multi-line string with raw PHP code
 
-Append custom PHP configuration to `LocalSettings.php`. This is inserted at the end of the generated configuration.
+Append custom PHP configuration inline via environment variable. This is inserted at the end of the generated `LocalSettings.php`.
+
+> **⚠️ Docker Compose `$` escaping**: Docker Compose interprets `$` as a variable reference. When using `MW_CONFIG_APPEND` in `docker-compose.yml`, you must escape every literal `$` as `$$` (e.g., `$$wgGroupPermissions`). For complex PHP config, use `MW_CONFIG_FILE` instead to avoid this issue.
 
 **Example**:
 ```yaml
 MW_CONFIG_APPEND: |
-  # Advanced upload settings
-  $wgEnableUploads = true;
-  $wgUseImageMagick = true;
-  $wgImageMagickConvertCommand = '/usr/bin/convert';
-  $wgFileExtensions = array_merge($wgFileExtensions, ['pdf', 'doc', 'docx', 'xls', 'xlsx']);
-  $wgMaxUploadSize = 104857600; // 100MB
+  # In docker-compose.yml, use $$ for literal $ signs
+  $$wgEnableUploads = true;
+  $$wgUseImageMagick = true;
+  $$wgImageMagickConvertCommand = '/usr/bin/convert';
+  $$wgFileExtensions = array_merge($$wgFileExtensions, ['pdf', 'doc', 'docx', 'xls', 'xlsx']);
+  $$wgMaxUploadSize = 104857600; // 100MB
   
   # Restrict editing to logged-in users
-  $wgGroupPermissions['*']['edit'] = false;
-  $wgGroupPermissions['user']['edit'] = true;
+  $$wgGroupPermissions['*']['edit'] = false;
+  $$wgGroupPermissions['user']['edit'] = true;
   
   # Custom namespace
   define("NS_DOCUMENTATION", 3000);
   define("NS_DOCUMENTATION_TALK", 3001);
-  $wgExtraNamespaces[NS_DOCUMENTATION] = "Documentation";
-  $wgExtraNamespaces[NS_DOCUMENTATION_TALK] = "Documentation_talk";
+  $$wgExtraNamespaces[NS_DOCUMENTATION] = "Documentation";
+  $$wgExtraNamespaces[NS_DOCUMENTATION_TALK] = "Documentation_talk";
   
   # Semantic MediaWiki settings
   enableSemantics('example.com');
-  $smwgDefaultStore = 'SMWSQLStore3';
+  $$smwgDefaultStore = 'SMWSQLStore3';
 ```
 
 ### Automation Flags

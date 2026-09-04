@@ -16,6 +16,8 @@ services:
       - extensions:/extensions
       - skins:/skins
       - uploads:/var/www/html/images
+      # Optional: Mount custom PHP config file (recommended over MW_CONFIG_APPEND)
+      # - ./custom-settings.php:/custom-config/custom.php:ro
     
     environment:
       # ============================================
@@ -98,46 +100,53 @@ services:
       # ============================================
       # CUSTOM CONFIGURATION
       # ============================================
-      # Raw PHP code appended to LocalSettings.php
+      # Option 1 (Recommended): Mount a PHP config file via MW_CONFIG_FILE.
+      # This avoids Docker Compose $$-interpolation issues with PHP variables.
+      # Requires a bind mount (see volumes section above).
+      # MW_CONFIG_FILE: /custom-config/custom.php
+
+      # Option 2: Inline PHP via MW_CONFIG_APPEND.
+      # IMPORTANT: Docker Compose interprets $ signs as variable references.
+      # Use $$ for every literal $ in PHP code (e.g., $$wgGroupPermissions).
       MW_CONFIG_APPEND: |
         # Advanced upload settings
-        $wgFileExtensions = array_merge($wgFileExtensions, ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
-        $wgMaxUploadSize = 104857600; // 100MB
-        $wgUseImageMagick = true;
-        $wgImageMagickConvertCommand = '/usr/bin/convert';
-        
+        $$wgFileExtensions = array_merge($$wgFileExtensions, ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+        $$wgMaxUploadSize = 104857600; // 100MB
+        $$wgUseImageMagick = true;
+        $$wgImageMagickConvertCommand = '/usr/bin/convert';
+
         # Restrict editing to logged-in users only
-        $wgGroupPermissions['*']['edit'] = false;
-        $wgGroupPermissions['user']['edit'] = true;
-        
+        $$wgGroupPermissions['*']['edit'] = false;
+        $$wgGroupPermissions['user']['edit'] = true;
+
         # Allow account creation
-        $wgGroupPermissions['*']['createaccount'] = true;
-        
+        $$wgGroupPermissions['*']['createaccount'] = true;
+
         # Custom namespace for documentation
         define("NS_DOCUMENTATION", 3000);
         define("NS_DOCUMENTATION_TALK", 3001);
-        $wgExtraNamespaces[NS_DOCUMENTATION] = "Documentation";
-        $wgExtraNamespaces[NS_DOCUMENTATION_TALK] = "Documentation_talk";
-        $wgNamespacesWithSubpages[NS_DOCUMENTATION] = true;
-        
+        $$wgExtraNamespaces[NS_DOCUMENTATION] = "Documentation";
+        $$wgExtraNamespaces[NS_DOCUMENTATION_TALK] = "Documentation_talk";
+        $$wgNamespacesWithSubpages[NS_DOCUMENTATION] = true;
+
         # VisualEditor configuration
-        $wgDefaultUserOptions['visualeditor-enable'] = 1;
-        $wgVisualEditorAvailableNamespaces = [
+        $$wgDefaultUserOptions['visualeditor-enable'] = 1;
+        $$wgVisualEditorAvailableNamespaces = [
           NS_MAIN => true,
           NS_USER => true,
           NS_PROJECT => true,
           NS_DOCUMENTATION => true
         ];
-        
+
         # Performance settings
-        $wgMainCacheType = CACHE_ACCEL;
-        $wgMemCachedServers = [];
-        $wgCacheDirectory = "/tmp/cache";
-        
+        $$wgMainCacheType = CACHE_ACCEL;
+        $$wgMemCachedServers = [];
+        $$wgCacheDirectory = "/tmp/cache";
+
         # Uncomment for Semantic MediaWiki configuration
         # enableSemantics('example.com');
-        # $smwgDefaultStore = 'SMWSQLStore3';
-        # $smwgQMaxSize = 5000;
+        # $$smwgDefaultStore = 'SMWSQLStore3';
+        # $$smwgQMaxSize = 5000;
       
       # ============================================
       # AUTOMATION FLAGS
