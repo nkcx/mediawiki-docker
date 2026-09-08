@@ -352,7 +352,7 @@ The image ships with a curated set of PHP extensions commonly needed by popular 
 | Extension | Use Case |
 |-----------|----------|
 | `ldap` | LDAPProvider, LDAPAuthentication2, PluggableAuth |
-| `apcu` | Recommended object cache for MediaWiki performance |
+| `apcu` | Recommended object cache for MediaWiki (included in base image) |
 
 For anything beyond the curated set, three environment variables let you install additional packages at container startup without building a custom image:
 

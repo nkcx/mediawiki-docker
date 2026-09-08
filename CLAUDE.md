@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A custom Docker image wrapping the official `mediawiki:1.43` image with a bash entrypoint (`scripts/custom-entrypoint.sh`) that turns environment variables into a fully configured MediaWiki installation—extensions, skins, composer packages, and `LocalSettings.php` are all generated at container start, with no manual PHP editing. The Dockerfile bakes in a curated set of PHP extensions (ldap, apcu) and the entrypoint supports installing additional system/PHP packages at runtime via `MW_APT_PACKAGES`, `MW_PHP_EXTENSIONS`, and `MW_PECL_EXTENSIONS`.
+A custom Docker image wrapping the official `mediawiki:1.43` image with a bash entrypoint (`scripts/custom-entrypoint.sh`) that turns environment variables into a fully configured MediaWiki installation—extensions, skins, composer packages, and `LocalSettings.php` are all generated at container start, with no manual PHP editing. The Dockerfile bakes in a curated set of PHP extensions (ldap; apcu is already in the base image) and the entrypoint supports installing additional system/PHP packages at runtime via `MW_APT_PACKAGES`, `MW_PHP_EXTENSIONS`, and `MW_PECL_EXTENSIONS`.
 
 ## Build & Lint
 
