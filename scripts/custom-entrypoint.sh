@@ -23,6 +23,66 @@ log() {
     echo "[MediaWiki Init] $1"
 }
 
+# Install additional system packages and PHP extensions at runtime
+install_runtime_packages() {
+    if [ -z "${MW_APT_PACKAGES}" ] && [ -z "${MW_PHP_EXTENSIONS}" ] && [ -z "${MW_PECL_EXTENSIONS}" ]; then
+        return
+    fi
+
+    log "Checking runtime packages..."
+    local did_apt_update=false
+
+    if [ -n "${MW_APT_PACKAGES}" ]; then
+        local missing_pkgs=""
+        for pkg in ${MW_APT_PACKAGES}; do
+            if ! dpkg -s "$pkg" &>/dev/null; then
+                missing_pkgs="$missing_pkgs $pkg"
+            fi
+        done
+        if [ -n "$missing_pkgs" ]; then
+            log "  Installing APT packages:${missing_pkgs}"
+            apt-get update -qq
+            did_apt_update=true
+            apt-get install -y --no-install-recommends ${missing_pkgs}
+        else
+            log "  APT packages already installed"
+        fi
+    fi
+
+    if [ -n "${MW_PHP_EXTENSIONS}" ]; then
+        local missing_exts=""
+        for ext in ${MW_PHP_EXTENSIONS}; do
+            if ! php -m 2>/dev/null | grep -qi "^${ext}$"; then
+                missing_exts="$missing_exts $ext"
+            fi
+        done
+        if [ -n "$missing_exts" ]; then
+            log "  Installing PHP extensions:${missing_exts}"
+            if [ "$did_apt_update" = false ]; then
+                apt-get update -qq
+                did_apt_update=true
+            fi
+            docker-php-ext-install ${missing_exts}
+        else
+            log "  PHP extensions already installed"
+        fi
+    fi
+
+    if [ -n "${MW_PECL_EXTENSIONS}" ]; then
+        for ext in ${MW_PECL_EXTENSIONS}; do
+            if ! php -m 2>/dev/null | grep -qi "^${ext}$"; then
+                log "  Installing PECL extension: ${ext}"
+                pecl install "$ext"
+                docker-php-ext-enable "$ext"
+            fi
+        done
+    fi
+
+    if [ "$did_apt_update" = true ]; then
+        rm -rf /var/lib/apt/lists/*
+    fi
+}
+
 # Ensure secret keys are generated once and persisted
 ensure_secret_keys() {
     # Load persisted secrets if they exist
@@ -663,7 +723,9 @@ main() {
     log "MediaWiki version: $CURRENT_VERSION"
     log "Default branch: $MW_VERSION_BRANCH"
     log ""
-    
+
+    install_runtime_packages
+
     ensure_secret_keys
     init_volumes
     

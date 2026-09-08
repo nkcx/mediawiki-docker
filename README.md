@@ -345,6 +345,51 @@ MW_CONFIG_APPEND: |
   $$smwgDefaultStore = 'SMWSQLStore3';
 ```
 
+### Runtime Package Installation
+
+The image ships with a curated set of PHP extensions commonly needed by popular MediaWiki extensions:
+
+| Extension | Use Case |
+|-----------|----------|
+| `ldap` | LDAPProvider, LDAPAuthentication2, PluggableAuth |
+| `apcu` | Recommended object cache for MediaWiki performance |
+
+For anything beyond the curated set, three environment variables let you install additional packages at container startup without building a custom image:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MW_APT_PACKAGES` | `""` | Space-separated list of APT packages to install at startup |
+| `MW_PHP_EXTENSIONS` | `""` | Space-separated list of PHP extensions to install via `docker-php-ext-install` |
+| `MW_PECL_EXTENSIONS` | `""` | Space-separated list of PECL extensions to install at startup |
+
+**Important notes:**
+- PHP extensions often require system dev libraries. Install those via `MW_APT_PACKAGES` alongside `MW_PHP_EXTENSIONS`.
+- Packages are only installed when missing — container restarts within the same container are fast. Container recreation (e.g., `docker-compose up --force-recreate`) will reinstall.
+- This adds to first-boot time. For production deployments with many runtime packages, consider building a custom image instead.
+
+#### Example: Adding Redis for Object Caching
+
+```yaml
+environment:
+  MW_APT_PACKAGES: "libzstd-dev"
+  MW_PECL_EXTENSIONS: "redis"
+  MW_CONFIG_APPEND: |
+    $$wgObjectCaches['redis'] = [
+        'class' => 'RedisBagOStuff',
+        'servers' => ['redis:6379'],
+    ];
+    $$wgMainCacheType = 'redis';
+```
+
+#### Example: Adding PostgreSQL Support
+
+```yaml
+environment:
+  MW_APT_PACKAGES: "libpq-dev"
+  MW_PHP_EXTENSIONS: "pgsql pdo_pgsql"
+  MW_DB_TYPE: "postgres"
+```
+
 ### Automation Flags
 
 | Variable | Default | Description |
@@ -608,9 +653,9 @@ The image can be configured to auto-rebuild when the upstream MediaWiki image up
 ## Limitations
 
 - **No ARM Support**: Currently only builds for x86_64
-- **Git and Composer Extensions Only**: Extensions must be available via git or Composer
 - **Single Container**: Not designed for multi-server deployments
 - **Sequential Updates**: Extensions update one at a time on startup
+- **Runtime Packages**: `MW_PHP_EXTENSIONS` / `MW_PECL_EXTENSIONS` are compiled at startup, adding boot time. For many runtime extensions, a custom image is faster.
 
 ## Contributing
 

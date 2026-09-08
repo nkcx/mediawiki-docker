@@ -1,6 +1,15 @@
 FROM mediawiki:1.43
 
-# Install dependencies for extension management
+# Curated PHP extensions for popular MediaWiki extensions:
+#   ldap  - LDAPProvider, LDAPAuthentication2, PluggableAuth
+#   apcu  - recommended object cache for MediaWiki
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libldap2-dev \
+    && docker-php-ext-install ldap \
+    && pecl install apcu && docker-php-ext-enable apcu \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies for extension management and runtime package installation
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \

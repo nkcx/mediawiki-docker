@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A custom Docker image wrapping the official `mediawiki:1.43` image with a bash entrypoint (`scripts/custom-entrypoint.sh`) that turns environment variables into a fully configured MediaWiki installation—extensions, skins, composer packages, and `LocalSettings.php` are all generated at container start, with no manual PHP editing.
+A custom Docker image wrapping the official `mediawiki:1.43` image with a bash entrypoint (`scripts/custom-entrypoint.sh`) that turns environment variables into a fully configured MediaWiki installation—extensions, skins, composer packages, and `LocalSettings.php` are all generated at container start, with no manual PHP editing. The Dockerfile bakes in a curated set of PHP extensions (ldap, apcu) and the entrypoint supports installing additional system/PHP packages at runtime via `MW_APT_PACKAGES`, `MW_PHP_EXTENSIONS`, and `MW_PECL_EXTENSIONS`.
 
 ## Build & Lint
 
@@ -22,9 +22,10 @@ GitHub Actions (`.github/workflows/build-image.yml`) builds and pushes to `ghcr.
 
 ## Architecture
 
-The image has exactly one moving part: **`scripts/custom-entrypoint.sh`** (~690 lines of bash). It runs before Apache and does everything in order:
+The image has exactly one moving part: **`scripts/custom-entrypoint.sh`** (~750 lines of bash). It runs before Apache and does everything in order:
 
 1. **Version detection** — reads `MW_VERSION` from the installed MediaWiki, derives `REL1_43`-style branch name.
+1b. **Runtime package installation** — if `MW_APT_PACKAGES`, `MW_PHP_EXTENSIONS`, or `MW_PECL_EXTENSIONS` are set, installs them (skipping already-installed packages for fast restarts).
 2. **Secret key persistence** — generates `MW_SECRET_KEY` / `MW_UPGRADE_KEY` once, stores in `/extensions/.secrets`, reuses on subsequent boots.
 3. **Volume init** — copies bundled extensions/skins into `/extensions` and `/skins` volumes on first run (or version change), then symlinks those volumes back into the webroot.
 4. **State diffing** — reads previous manifest files (`.managed-manifest`) and compares against current `MW_EXTENSIONS` / `MW_SKINS` / `MW_COMPOSER_PACKAGES` env vars. Removes items no longer listed, updates existing git repos, clones new ones.
