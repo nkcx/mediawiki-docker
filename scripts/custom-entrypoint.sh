@@ -428,6 +428,8 @@ COMPOSER_END
     # Run composer update (not install) to update existing packages
     log "  Running composer update..."
     cd "$MEDIAWIKI_ROOT"
+    composer config --no-plugins allow-plugins.composer/installers true
+    composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true
     COMPOSER=composer.local.json composer update --no-dev --no-interaction || {
         log "  ERROR: Composer update failed"
         return 1
