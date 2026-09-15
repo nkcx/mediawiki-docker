@@ -1,4 +1,8 @@
+FROM composer:2 AS composer
+
 FROM mediawiki:1.43
+
+COPY --from=composer /usr/bin/composer /usr/bin/composer
 
 # Curated PHP extensions for popular MediaWiki extensions:
 #   ldap  - LDAPProvider, LDAPAuthentication2, PluggableAuth
