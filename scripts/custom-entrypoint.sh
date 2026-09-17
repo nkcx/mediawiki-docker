@@ -421,19 +421,13 @@ COMPOSER_START
     
     cat >> "$MEDIAWIKI_ROOT/composer.local.json" << 'COMPOSER_END'
 
-    },
-    "config": {
-        "allow-plugins": {
-            "composer/installers": true,
-            "wikimedia/composer-merge-plugin": true
-        }
     }
 }
 COMPOSER_END
 
-    # Run composer as www-data to avoid root permission issues.
-    # The upstream image extracts files owned by UID 1000, so we must fix
-    # ownership on everything Composer needs to read/write.
+    # Fix file ownership so www-data can run Composer.
+    # The upstream MW image extracts files owned by UID 1000; the entrypoint
+    # runs as root (UID 0). Neither can write these files without chown.
     log "  Running composer update..."
     cd "$MEDIAWIKI_ROOT"
     chown www-data:www-data "$MEDIAWIKI_ROOT/composer.json" "$MEDIAWIKI_ROOT/composer.local.json"
@@ -442,7 +436,14 @@ COMPOSER_END
     local composer_home="/var/www/.composer"
     mkdir -p "$composer_home"
     chown www-data:www-data "$composer_home"
-    su -s /bin/bash www-data -c 'COMPOSER=composer.local.json composer update --no-dev --no-interaction' || {
+
+    # Configure allow-plugins in the main composer.json so the merge plugin
+    # and installer plugin are permitted. Then run composer update using the
+    # main composer.json — its merge plugin pulls in composer.local.json and
+    # resolves all deps together, avoiding version conflicts with MW core.
+    su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.composer/installers true'
+    su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true'
+    su -s /bin/bash www-data -c 'composer update --no-dev --no-interaction' || {
         log "  ERROR: Composer update failed"
         return 1
     }
