@@ -429,7 +429,8 @@ COMPOSER_END
     # root permission issues with composer.json and plugin restrictions
     log "  Running composer update..."
     cd "$MEDIAWIKI_ROOT"
-    chown www-data:www-data "$MEDIAWIKI_ROOT/composer.json" "$MEDIAWIKI_ROOT/composer.lock" "$MEDIAWIKI_ROOT/composer.local.json"
+    chown www-data:www-data "$MEDIAWIKI_ROOT/composer.json" "$MEDIAWIKI_ROOT/composer.local.json"
+    [ -f "$MEDIAWIKI_ROOT/composer.lock" ] && chown www-data:www-data "$MEDIAWIKI_ROOT/composer.lock"
     local composer_home="/var/www/.composer"
     mkdir -p "$composer_home"
     chown www-data:www-data "$composer_home"
