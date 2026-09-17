@@ -428,6 +428,8 @@ COMPOSER_END
     # Run composer update (not install) to update existing packages
     log "  Running composer update..."
     cd "$MEDIAWIKI_ROOT"
+    export COMPOSER_ALLOW_SUPERUSER=1
+    chmod u+w "$MEDIAWIKI_ROOT/composer.json"
     composer config --no-plugins allow-plugins.composer/installers true
     composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true
     COMPOSER=composer.local.json composer update --no-dev --no-interaction || {
