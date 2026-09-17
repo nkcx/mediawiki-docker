@@ -421,10 +421,16 @@ COMPOSER_START
     
     cat >> "$MEDIAWIKI_ROOT/composer.local.json" << 'COMPOSER_END'
 
+    },
+    "config": {
+        "allow-plugins": {
+            "composer/installers": true,
+            "wikimedia/composer-merge-plugin": true
+        }
     }
 }
 COMPOSER_END
-    
+
     # Run composer as www-data to avoid root permission issues.
     # The upstream image extracts files owned by UID 1000, so we must fix
     # ownership on everything Composer needs to read/write.
@@ -436,8 +442,6 @@ COMPOSER_END
     local composer_home="/var/www/.composer"
     mkdir -p "$composer_home"
     chown www-data:www-data "$composer_home"
-    su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.composer/installers true'
-    su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true'
     su -s /bin/bash www-data -c 'COMPOSER=composer.local.json composer update --no-dev --no-interaction' || {
         log "  ERROR: Composer update failed"
         return 1
