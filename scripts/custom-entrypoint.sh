@@ -425,12 +425,14 @@ COMPOSER_START
 }
 COMPOSER_END
     
-    # Run composer as www-data (which owns the MediaWiki files) to avoid
-    # root permission issues with composer.json and plugin restrictions
+    # Run composer as www-data to avoid root permission issues.
+    # The upstream image extracts files owned by UID 1000, so we must fix
+    # ownership on everything Composer needs to read/write.
     log "  Running composer update..."
     cd "$MEDIAWIKI_ROOT"
     chown www-data:www-data "$MEDIAWIKI_ROOT/composer.json" "$MEDIAWIKI_ROOT/composer.local.json"
     [ -f "$MEDIAWIKI_ROOT/composer.lock" ] && chown www-data:www-data "$MEDIAWIKI_ROOT/composer.lock"
+    chown -R www-data:www-data "$MEDIAWIKI_ROOT/vendor"
     local composer_home="/var/www/.composer"
     mkdir -p "$composer_home"
     chown www-data:www-data "$composer_home"
