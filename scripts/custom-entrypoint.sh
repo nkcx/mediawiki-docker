@@ -425,14 +425,17 @@ COMPOSER_START
 }
 COMPOSER_END
     
-    # Run composer update (not install) to update existing packages
+    # Run composer as www-data (which owns the MediaWiki files) to avoid
+    # root permission issues with composer.json and plugin restrictions
     log "  Running composer update..."
     cd "$MEDIAWIKI_ROOT"
-    export COMPOSER_ALLOW_SUPERUSER=1
-    chmod u+w "$MEDIAWIKI_ROOT/composer.json"
-    composer config --no-plugins allow-plugins.composer/installers true
-    composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true
-    COMPOSER=composer.local.json composer update --no-dev --no-interaction || {
+    chown www-data:www-data "$MEDIAWIKI_ROOT/composer.local.json"
+    local composer_home="/var/www/.composer"
+    mkdir -p "$composer_home"
+    chown www-data:www-data "$composer_home"
+    su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.composer/installers true'
+    su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true'
+    su -s /bin/bash www-data -c 'COMPOSER=composer.local.json composer update --no-dev --no-interaction' || {
         log "  ERROR: Composer update failed"
         return 1
     }
