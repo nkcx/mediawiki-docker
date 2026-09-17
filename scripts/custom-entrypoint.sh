@@ -421,6 +421,14 @@ COMPOSER_START
     
     cat >> "$MEDIAWIKI_ROOT/composer.local.json" << 'COMPOSER_END'
 
+    },
+    "extra": {
+        "merge-plugin": {
+            "include": [
+                "extensions/*/composer.json",
+                "skins/*/composer.json"
+            ]
+        }
     }
 }
 COMPOSER_END

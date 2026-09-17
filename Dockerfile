@@ -27,11 +27,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y --auto-remove g++ pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies for extension management and runtime package installation
+# Install dependencies for extension management and runtime package installation.
+# unzip is required by Composer to extract dist packages; without it every
+# download fails with "The zip extension and unzip/7z commands are both missing".
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     git \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies (if needed in the future)
