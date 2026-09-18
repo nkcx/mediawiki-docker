@@ -467,18 +467,17 @@ COMPOSER_END
 
 # Process extensions from environment
 process_extensions() {
-    if [ -z "${MW_EXTENSIONS}" ]; then
-        # Clear manifest if no extensions requested
-        > "$EXTENSIONS_MANIFEST"
-        return
-    fi
-    
     log "Processing extensions..."
-    
+
     # Clear manifest and load tracking
     > "$EXTENSIONS_MANIFEST"
     > /tmp/extension_loads.txt
-    
+
+    if [ -z "${MW_EXTENSIONS}" ]; then
+        load_composer_extensions
+        return
+    fi
+
     while IFS= read -r ext; do
         [[ -z "$ext" || "$ext" =~ ^[[:space:]]*# ]] && continue
         ext=$(echo "$ext" | xargs)
@@ -513,8 +512,38 @@ process_extensions() {
         fi
         
         echo "$load_cmd" >> /tmp/extension_loads.txt
-        
+
     done <<< "$MW_EXTENSIONS"
+
+    load_composer_extensions
+}
+
+# Composer-installed extensions still need wfLoadExtension(). Without this,
+# a package listed only in MW_COMPOSER_PACKAGES is installed into
+# /extensions but never registered, so MediaWiki ignores it entirely.
+load_composer_extensions() {
+    local ext
+    for ext in "${!COMPOSER_PROVIDED_EXTENSIONS[@]}"; do
+        # Already handled by the MW_EXTENSIONS loop
+        [ -n "${DESIRED_EXTENSIONS[$ext]}" ] && continue
+
+        # The package-name-to-directory guess can be wrong, so only load what
+        # actually exists rather than emitting a call that would fatal.
+        if [ ! -d "/extensions/${ext}" ]; then
+            log "  ${ext}: Composer package installed but /extensions/${ext} not found - not loading"
+            continue
+        fi
+
+        log "  ${ext}: Loading (installed by Composer)"
+        echo "extension:${ext}:composer" >> "$EXTENSIONS_MANIFEST"
+
+        local ext_env load_var load_cmd
+        ext_env=$(echo "$ext" | tr '[:lower:]' '[:upper:]' | tr '-' '_' | tr ' ' '_')
+        load_var="MW_EXT_${ext_env}_LOAD"
+        load_cmd="${!load_var}"
+        [ -z "$load_cmd" ] && load_cmd="wfLoadExtension( '${ext}' );"
+        echo "$load_cmd" >> /tmp/extension_loads.txt
+    done
 }
 
 # Update existing git skin
@@ -669,6 +698,10 @@ $wgDBprefix = getenv('MW_DB_PREFIX') ?: '';
 $wgSitename = getenv('MW_SITE_NAME');
 $wgLanguageCode = getenv('MW_SITE_LANG') ?: 'en';
 $wgServer = getenv('MW_SITE_SERVER');
+# Apache serves MediaWiki from the document root in this image. Without this,
+# $wgScriptPath keeps its core default of '/wiki' and every canonical URL
+# points at a path that does not exist.
+$wgScriptPath = getenv('MW_SCRIPT_PATH') ?: '';
 
 # Email
 $wgEmergencyContact = getenv('MW_EMERGENCY_CONTACT') ?: '';

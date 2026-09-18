@@ -93,6 +93,7 @@ volumes:
 | `MW_SITE_NAME` | Yes | - | Wiki name displayed in title |
 | `MW_SITE_LANG` | No | `en` | Language code (e.g., `en`, `de`, `fr`) |
 | `MW_SITE_SERVER` | Yes | - | Full URL to your wiki (e.g., `http://localhost:8080`) |
+| `MW_SCRIPT_PATH` | No | `""` | URL path MediaWiki is served from. Empty (document root) suits this image; MediaWiki's own default of `/wiki` would break canonical URLs |
 | `MW_EMERGENCY_CONTACT` | No | `""` | Email for emergency contact |
 | `MW_PASSWORD_SENDER` | No | `""` | Email address for password resets |
 
