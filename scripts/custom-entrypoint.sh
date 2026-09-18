@@ -421,14 +421,6 @@ COMPOSER_START
     
     cat >> "$MEDIAWIKI_ROOT/composer.local.json" << 'COMPOSER_END'
 
-    },
-    "extra": {
-        "merge-plugin": {
-            "include": [
-                "extensions/*/composer.json",
-                "skins/*/composer.json"
-            ]
-        }
     }
 }
 COMPOSER_END
@@ -454,6 +446,13 @@ COMPOSER_END
     # resolves all deps together, avoiding version conflicts with MW core.
     su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.composer/installers true'
     su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true'
+
+    # Merge every extension and skin composer.json alongside composer.local.json.
+    # These globs must live in the ROOT composer.json: a nested merge-plugin
+    # include inside composer.local.json is not reliably processed, which let
+    # composer update prune packages required only by bundled extensions
+    # (OATHAuth's base32/qr-code/hotp chain, AbuseFilter's equivset).
+    su -s /bin/bash www-data -c "composer config --no-plugins --json extra.merge-plugin.include '[\"composer.local.json\",\"extensions/*/composer.json\",\"skins/*/composer.json\"]'"
     su -s /bin/bash www-data -c 'composer update --no-dev --no-interaction' || {
         log "  ERROR: Composer update failed"
         return 1
