@@ -458,16 +458,30 @@ COMPOSER_END
     su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.composer/installers true'
     su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true'
 
-    # Merge every extension and skin composer.json alongside composer.local.json,
-    # otherwise composer update prunes packages required only by bundled
+    # Merge the composer.json of every extension and skin that Composer does
+    # NOT manage - bundled ones and git clones - alongside composer.local.json.
+    # Without this, composer update prunes packages required only by bundled
     # extensions (OATHAuth's base32/qr-code/hotp chain, AbuseFilter's equivset).
-    # The paths are enumerated here rather than passed as a "extensions/*" glob:
+    #
+    # Composer-installed packages must be left out: their requirements are
+    # already known as dependencies, and merging their composer.json into the
+    # root project as well makes resolution fail. This is an allowlist rather
+    # than excluding Composer packages by folder name, so a wrong folder-name
+    # guess cannot break Composer.
+    #
+    # Paths are enumerated rather than passed as an "extensions/*" glob:
     # merge-plugin does not expand wildcards through the symlinked extensions
     # and skins directories, and silently merges nothing.
     local includes='"composer.local.json"'
-    local cfg
+    local cfg dir kind name
     for cfg in extensions/*/composer.json skins/*/composer.json; do
-        [ -f "$cfg" ] && includes="${includes},\"${cfg}\""
+        [ -f "$cfg" ] || continue
+        dir="${cfg%/composer.json}"
+        kind="${dir%%/*}"
+        name="${dir#*/}"
+        if [ -d "$dir/.git" ] || grep -qxF "$name" "/usr/local/share/mediawiki-bundled-${kind}" 2>/dev/null; then
+            includes="${includes},\"${cfg}\""
+        fi
     done
     su -s /bin/bash www-data -c "composer config --no-plugins --json extra.merge-plugin.include '[${includes}]'"
     su -s /bin/bash www-data -c 'composer update --no-dev --no-interaction' || {
