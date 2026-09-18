@@ -727,6 +727,61 @@ EOF
 }
 
 # Run database update (critical for version upgrades)
+# True when the wiki schema already exists in the database
+wiki_is_installed() {
+    cd "$MEDIAWIKI_ROOT"
+    php maintenance/run.php sql.php --query="SELECT 1 FROM ${MW_DB_PREFIX:-}user LIMIT 1" >/dev/null 2>&1
+}
+
+# Install MediaWiki into an empty database. update.php cannot bootstrap a
+# fresh database - it fails with "Can not upgrade from versions older than
+# 1.35" - so a greenfield wiki needs install.php first.
+run_database_install() {
+    [ -f "$MEDIAWIKI_ROOT/LocalSettings.php" ] || return 0
+    cd "$MEDIAWIKI_ROOT"
+
+    if wiki_is_installed; then
+        return 0
+    fi
+
+    if [ -z "${MW_ADMIN_PASSWORD}" ]; then
+        log "Database is empty but MW_ADMIN_PASSWORD is not set - skipping install."
+        log "  Set MW_ADMIN_PASSWORD to auto-install, or restore a database dump."
+        return 0
+    fi
+
+    log "Empty database detected - running install.php..."
+    local confdir="/tmp/mw-install"
+    mkdir -p "$confdir"
+
+    # install.php refuses to run while a LocalSettings.php is present, and we
+    # generate our own, so move the stub aside for the duration.
+    mv "$MEDIAWIKI_ROOT/LocalSettings.php" "$confdir/LocalSettings.stub.php"
+
+    local install_status=0
+    php maintenance/run.php install.php \
+        --dbtype="${MW_DB_TYPE:-mysql}" \
+        --dbserver="${MW_DB_SERVER}" \
+        --dbname="${MW_DB_NAME}" \
+        --dbuser="${MW_DB_USER}" \
+        --dbpass="${MW_DB_PASSWORD}" \
+        --server="${MW_SITE_SERVER}" \
+        --scriptpath="" \
+        --lang="${MW_SITE_LANG:-en}" \
+        --pass="${MW_ADMIN_PASSWORD}" \
+        --confpath="$confdir" \
+        "${MW_SITE_NAME:-MediaWiki}" "${MW_ADMIN_USER:-Admin}" || install_status=$?
+
+    mv "$confdir/LocalSettings.stub.php" "$MEDIAWIKI_ROOT/LocalSettings.php"
+    rm -f "$confdir/LocalSettings.php"
+
+    if [ "$install_status" -ne 0 ]; then
+        log "ERROR: install.php failed"
+        return 1
+    fi
+    log "  Install complete (admin user: ${MW_ADMIN_USER:-Admin})"
+}
+
 run_database_update() {
     if [ -f "$MEDIAWIKI_ROOT/LocalSettings.php" ]; then
         log "Running database updates (update.php)..."
@@ -777,6 +832,9 @@ main() {
     
     generate_stub_config
     
+    # Bootstrap an empty database before update.php, which cannot install one
+    run_database_install
+
     # Always run database updates by default (MW_AUTO_UPDATE defaults to true)
     if [ "${MW_AUTO_UPDATE:-true}" = "true" ]; then
         run_database_update

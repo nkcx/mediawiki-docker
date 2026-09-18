@@ -96,6 +96,18 @@ volumes:
 | `MW_EMERGENCY_CONTACT` | No | `""` | Email for emergency contact |
 | `MW_PASSWORD_SENDER` | No | `""` | Email address for password resets |
 
+### First-Time Installation
+
+An empty database cannot be bootstrapped by `update.php`. When the entrypoint
+detects that no wiki schema exists, it runs `install.php` first — but only if
+`MW_ADMIN_PASSWORD` is set. Without it, the wiki is left uninstalled and a
+message is logged, so that restoring a database dump is never overwritten.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MW_ADMIN_USER` | No | `Admin` | Administrator account created on first install |
+| `MW_ADMIN_PASSWORD` | No | - | Administrator password. If unset, no install is attempted |
+
 ### Email Configuration
 
 | Variable | Default | Description |
