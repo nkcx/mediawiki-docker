@@ -32,7 +32,8 @@ The image has exactly one moving part: **`scripts/custom-entrypoint.sh`** (~750 
 5. **Composer** — generates `composer.local.json` from `MW_COMPOSER_PACKAGES` and runs `composer update`.
 6. **Extension/skin loading** — writes `wfLoadExtension()` / `wfLoadSkin()` calls to temp files, or uses custom `MW_EXT_<NAME>_LOAD` overrides.
 7. **LocalSettings.php generation** — builds `/config/LocalSettings.php` from env vars, appends skin/extension loads, then appends raw PHP from `MW_CONFIG_APPEND`.
-8. **DB update** — runs `maintenance/run.php update.php` if `MW_AUTO_UPDATE` is true (default).
+8. **DB install** — if the database has no wiki schema and `MW_ADMIN_PASSWORD` is set, runs `install.php` (moving the stub `LocalSettings.php` aside for the duration). `update.php` cannot bootstrap an empty database.
+8b. **DB update** — runs `maintenance/run.php update.php` if `MW_AUTO_UPDATE` is true (default).
 9. **Handoff** — `exec docker-php-entrypoint "$@"` starts Apache.
 
 A stub `LocalSettings.php` in the webroot just `require`s `/config/LocalSettings.php`.
