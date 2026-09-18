@@ -273,13 +273,22 @@ MW_COMPOSER_PACKAGES: |
 - If no version is specified it defaults to `*`, which means the **newest release**, not the newest one compatible with your MediaWiki. Extensions declare their supported MediaWiki versions in `extension.json`, which Composer never reads, so it cannot tell. An incompatible extension stops the whole wiki from starting. Pin versions, e.g. `mediawiki/lingo:~3.2.0` (Lingo 3.3.0 requires MediaWiki 1.45)
 - Extensions installed via Composer are loaded automatically; listing them in `MW_EXTENSIONS` as well is optional
 - Git-managed extensions are fetched before Composer runs, so their own `composer.json` dependencies are installed on the first start
-- Versions are resolved on every container start, the same way git-managed extensions pull on every start. A floating constraint such as `^14` or `*` picks up new releases on restart; pin a constraint such as `14.2.1` to hold a version
-- The last successful resolution is kept in `/config/composer.lock`. If resolving fails on a later start, for example because Packagist is unreachable, those versions are reinstalled so the wiki still starts. This only happens when nothing affecting resolution has changed (same image, package list and merged `composer.json` files); otherwise the start fails as before
+- `composer update` runs on every container start, the same way git-managed extensions pull on every start. A floating constraint such as `^14` or `*` picks up new releases on restart; pin a constraint such as `14.2.1` to hold a version
+- Mount the optional `vendor` volume (below) so installed packages persist like on a normal install. Composer then only changes what has actually changed, and if it cannot reach Packagist the start continues with the installed versions. Without the volume, packages are reinstalled on every start and a failed update stops the container
 - A new release that installs cleanly but is incompatible with your MediaWiki will still be picked up, since Composer cannot see MediaWiki compatibility. Pin anything you cannot afford to have change under you
+
+#### Persisting vendor/ (recommended)
+
+```yaml
+volumes:
+  - vendor:/var/www/html/vendor:z
+```
+
+Mount it at exactly this path, not via a symlink: Composer's autoloader derives file locations from the real path of `vendor/`. It holds core's own libraries as well as Composer packages, so whenever the image changes (a MediaWiki upgrade, or a rebuild) the entrypoint restores core's copy from the image and `composer update` re-adds your packages. That step needs network access.
 
 #### Composer download cache (optional)
 
-Mount a volume at `/composer-cache` to keep Composer's downloads between containers. Packages whose version has not changed are then installed from the cache instead of downloaded again, and the last-known-good fallback can work without network access. Without it everything still works, but each start downloads every package.
+Mount a volume at `/composer-cache` to keep Composer's downloads between containers. Packages whose version has not changed are then installed from the cache rather than downloaded again, which mostly matters without the `vendor` volume or after an image upgrade.
 
 ```yaml
 volumes:
@@ -471,11 +480,13 @@ volumes:
   - extensions:/extensions     # Extension storage
   - skins:/skins              # Skin storage
   - uploads:/var/www/html/images  # User uploads
+  # Recommended with Composer packages, see "Persisting vendor/"
+  # - vendor:/var/www/html/vendor
   # Optional: Composer download cache, see "Composer download cache"
   # - composer-cache:/composer-cache
 ```
 
-**Note**: The `config` volume stores generated `LocalSettings.php`, persisted secret keys in `/config/.secrets`, and the last successful Composer resolution in `/config/composer.lock`.
+**Note**: The `config` volume stores generated `LocalSettings.php`, persisted secret keys in `/config/.secrets`.
 
 ### SELinux hosts require `:z`
 
