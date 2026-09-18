@@ -203,17 +203,25 @@ build_desired_state() {
             pkg_name="${pkg%%:*}"
             DESIRED_COMPOSER["$pkg_name"]=1
             
-            # Track which extensions are provided by Composer
-            # Common patterns: 
-            # - mediawiki/page-forms -> PageForms
-            # - mediawiki/semantic-media-wiki -> SemanticMediaWiki
-            if [[ "$pkg_name" =~ ^mediawiki/ ]]; then
+            # Work out which extensions directory the package installs into.
+            # MW_COMPOSER_<PACKAGE>_FOLDER wins (e.g. mediawiki/image-map ->
+            # MW_COMPOSER_MEDIAWIKI_IMAGE_MAP_FOLDER); it also lets packages
+            # outside the mediawiki/ vendor be loaded as extensions. Otherwise
+            # guess kebab-case to PascalCase:
+            #   mediawiki/page-forms         -> PageForms
+            #   mediawiki/semantic-media-wiki -> SemanticMediaWiki
+            local pkg_env folder_var
+            pkg_env=$(echo "$pkg_name" | tr '[:lower:]' '[:upper:]' | tr '/.-' '___')
+            folder_var="MW_COMPOSER_${pkg_env}_FOLDER"
+            ext_name="${!folder_var}"
+            if [ -n "$ext_name" ]; then
+                log "  Composer will provide: ${ext_name} (from ${folder_var})"
+            elif [[ "$pkg_name" =~ ^mediawiki/ ]]; then
                 ext_name="${pkg_name#mediawiki/}"
-                # Convert kebab-case to PascalCase
                 ext_name=$(echo "$ext_name" | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)sub(/./,toupper(substr($i,1,1)),$i)}1' | sed 's/ //g')
-                COMPOSER_PROVIDED_EXTENSIONS["$ext_name"]=1
                 log "  Composer will provide: ${ext_name}"
             fi
+            [ -n "$ext_name" ] && COMPOSER_PROVIDED_EXTENSIONS["$ext_name"]=1
         done <<< "$MW_COMPOSER_PACKAGES"
     fi
     
@@ -244,7 +252,10 @@ cleanup_removed_items() {
     
     # Remove extensions
     for name in "${!PREV_EXTENSIONS[@]}"; do
-        if [ -z "${DESIRED_EXTENSIONS[$name]}" ]; then
+        # Composer-provided extensions are recorded in the manifest too, so
+        # without the second check they were deleted every boot and
+        # re-downloaded.
+        if [ -z "${DESIRED_EXTENSIONS[$name]}" ] && [ -z "${COMPOSER_PROVIDED_EXTENSIONS[$name]}" ]; then
             log "  Removing extension: $name (no longer requested)"
             rm -rf "/extensions/$name"
             removed=1
@@ -474,7 +485,6 @@ process_extensions() {
     > /tmp/extension_loads.txt
 
     if [ -z "${MW_EXTENSIONS}" ]; then
-        load_composer_extensions
         return
     fi
 
@@ -514,8 +524,6 @@ process_extensions() {
         echo "$load_cmd" >> /tmp/extension_loads.txt
 
     done <<< "$MW_EXTENSIONS"
-
-    load_composer_extensions
 }
 
 # Composer-installed extensions still need wfLoadExtension(). Without this,
@@ -882,14 +890,14 @@ main() {
     # Clean up removed items FIRST
     cleanup_removed_items
     
-    # Process Composer (updates existing, installs new)
-    process_composer_env
-    
-    # Process extensions (updates existing, installs new)
+    # Git-managed extensions and skins first, so their own composer.json
+    # files are on disk when Composer builds its merge list
     process_extensions
-    
-    # Process skins (same pattern)
     process_skins
+
+    # Composer (updates existing, installs new), then register what it installed
+    process_composer_env
+    load_composer_extensions
     
     # Generate LocalSettings.php
     generate_localsettings
