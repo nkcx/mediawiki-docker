@@ -270,7 +270,7 @@ MW_COMPOSER_PACKAGES: |
 ```
 
 **Notes**:
-- If no version specified, defaults to `*` (latest compatible)
+- If no version is specified it defaults to `*`, which means the **newest release**, not the newest one compatible with your MediaWiki. Extensions declare their supported MediaWiki versions in `extension.json`, which Composer never reads, so it cannot tell. An incompatible extension stops the whole wiki from starting. Pin versions, e.g. `mediawiki/lingo:~3.2.0` (Lingo 3.3.0 requires MediaWiki 1.45)
 - Extensions installed via Composer are loaded automatically; listing them in `MW_EXTENSIONS` as well is optional
 - Git-managed extensions are fetched before Composer runs, so their own `composer.json` dependencies are installed on the first start
 - Composer packages are updated (not just installed) on each container start
