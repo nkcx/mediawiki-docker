@@ -447,12 +447,18 @@ COMPOSER_END
     su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.composer/installers true'
     su -s /bin/bash www-data -c 'composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true'
 
-    # Merge every extension and skin composer.json alongside composer.local.json.
-    # These globs must live in the ROOT composer.json: a nested merge-plugin
-    # include inside composer.local.json is not reliably processed, which let
-    # composer update prune packages required only by bundled extensions
-    # (OATHAuth's base32/qr-code/hotp chain, AbuseFilter's equivset).
-    su -s /bin/bash www-data -c "composer config --no-plugins --json extra.merge-plugin.include '[\"composer.local.json\",\"extensions/*/composer.json\",\"skins/*/composer.json\"]'"
+    # Merge every extension and skin composer.json alongside composer.local.json,
+    # otherwise composer update prunes packages required only by bundled
+    # extensions (OATHAuth's base32/qr-code/hotp chain, AbuseFilter's equivset).
+    # The paths are enumerated here rather than passed as a "extensions/*" glob:
+    # merge-plugin does not expand wildcards through the symlinked extensions
+    # and skins directories, and silently merges nothing.
+    local includes='"composer.local.json"'
+    local cfg
+    for cfg in extensions/*/composer.json skins/*/composer.json; do
+        [ -f "$cfg" ] && includes="${includes},\"${cfg}\""
+    done
+    su -s /bin/bash www-data -c "composer config --no-plugins --json extra.merge-plugin.include '[${includes}]'"
     su -s /bin/bash www-data -c 'composer update --no-dev --no-interaction' || {
         log "  ERROR: Composer update failed"
         return 1
