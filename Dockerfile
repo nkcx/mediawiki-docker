@@ -43,8 +43,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Record which extensions and skins ship with MediaWiki. They share the
 # /extensions and /skins volumes with Composer-installed packages at runtime,
 # and the entrypoint must tell them apart.
-RUN ls -1 /var/www/html/extensions > /usr/local/share/mediawiki-bundled-extensions \
-    && ls -1 /var/www/html/skins > /usr/local/share/mediawiki-bundled-skins
+RUN find /var/www/html/extensions -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+        > /usr/local/share/mediawiki-bundled-extensions \
+    && find /var/www/html/skins -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+        > /usr/local/share/mediawiki-bundled-skins
 
 # Fingerprint of everything in the image that affects Composer resolution. The
 # entrypoint re-resolves packages when this changes, so an image upgrade can
