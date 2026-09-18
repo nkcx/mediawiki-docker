@@ -441,6 +441,9 @@ COMPOSER_END
     chown www-data:www-data "$MEDIAWIKI_ROOT/composer.json" "$MEDIAWIKI_ROOT/composer.local.json"
     [ -f "$MEDIAWIKI_ROOT/composer.lock" ] && chown www-data:www-data "$MEDIAWIKI_ROOT/composer.lock"
     chown -R www-data:www-data "$MEDIAWIKI_ROOT/vendor"
+    # composer/installers creates extension and skin directories in these
+    # volumes, which are root-owned, so www-data needs write access on them.
+    chown www-data:www-data /extensions /skins
     local composer_home="/var/www/.composer"
     mkdir -p "$composer_home"
     chown www-data:www-data "$composer_home"
