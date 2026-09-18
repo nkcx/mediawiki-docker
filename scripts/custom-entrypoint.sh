@@ -6,6 +6,9 @@ EXTENSIONS_MANIFEST="/extensions/.managed-manifest"
 SKINS_MANIFEST="/skins/.managed-manifest"
 COMPOSER_MANIFEST="/extensions/.composer-manifest"
 SECRETS_FILE="/extensions/.secrets"
+COMPOSER_LOCK_STORE="/config/composer.lock"
+COMPOSER_FINGERPRINT_STORE="/config/composer.fingerprint"
+COMPOSER_CACHE_MOUNT="/composer-cache"
 
 # Get MediaWiki version from the installation
 get_mediawiki_version() {
@@ -109,26 +112,46 @@ ensure_secret_keys() {
     export EFFECTIVE_UPGRADE_KEY="${MW_UPGRADE_KEY:-$PERSISTED_UPGRADE_KEY}"
 }
 
+# Replace the bundled extensions or skins on the volume with the image's copies,
+# so a MediaWiki point release actually delivers its bundled-extension fixes.
+# Git-managed copies are left alone.
+refresh_bundled() {
+    local kind="$1" src="$MEDIAWIKI_ROOT/$1" dst="/$1" name count=0
+    while IFS= read -r name; do
+        { [ -n "$name" ] && [ -e "$src/$name" ]; } || continue
+        if [ -d "$dst/$name/.git" ]; then
+            log "  $name: git-managed, keeping it"
+            continue
+        fi
+        rm -rf "${dst:?}/$name"
+        # Not cp -a, which would also copy the image's SELinux labels onto the volume
+        cp -R --preserve=mode,timestamps "$src/$name" "$dst/$name"
+        count=$((count + 1))
+    done < "/usr/local/share/mediawiki-bundled-$kind"
+    log "  Refreshed $count bundled $kind from the image"
+}
+
 # Initialize extension/skin volumes from base image
 init_volumes() {
     log "Checking volumes for MediaWiki $CURRENT_VERSION..."
-    
-    # Extensions
-    if [ ! -f /extensions/.initialized ] || [ "$(cat /extensions/.initialized 2>/dev/null)" != "$CURRENT_VERSION" ]; then
-        log "Syncing base extensions..."
-        mkdir -p /extensions
-        cp -rn $MEDIAWIKI_ROOT/extensions/* /extensions/ 2>/dev/null || true
-        echo "$CURRENT_VERSION" > /extensions/.initialized
-    fi
-    
-    # Skins
-    if [ ! -f /skins/.initialized ] || [ "$(cat /skins/.initialized 2>/dev/null)" != "$CURRENT_VERSION" ]; then
-        log "Syncing base skins..."
-        mkdir -p /skins
-        cp -rn $MEDIAWIKI_ROOT/skins/* /skins/ 2>/dev/null || true
-        echo "$CURRENT_VERSION" > /skins/.initialized
-    fi
-    
+
+    local kind
+    for kind in extensions skins; do
+        mkdir -p "/$kind"
+        if [ "$(cat "/$kind/.initialized" 2>/dev/null)" != "$CURRENT_VERSION" ]; then
+            if [ -L "$MEDIAWIKI_ROOT/$kind" ]; then
+                # A restarted rather than recreated container: the image's copy
+                # was already replaced by the link, so there is nothing to copy.
+                log "  WARNING: cannot refresh bundled $kind in a restarted container; will retry when it is recreated"
+            else
+                log "Syncing bundled $kind for MediaWiki $CURRENT_VERSION..."
+                refresh_bundled "$kind"
+                # Only after a successful copy, so a failure is retried
+                echo "$CURRENT_VERSION" > "/$kind/.initialized"
+            fi
+        fi
+    done
+
     # Link volumes to MediaWiki directories
     rm -rf $MEDIAWIKI_ROOT/extensions $MEDIAWIKI_ROOT/skins
     ln -sf /extensions $MEDIAWIKI_ROOT/extensions
@@ -384,6 +407,7 @@ process_composer_env() {
             log "Removing Composer configuration (no packages requested)..."
             rm -f "$MEDIAWIKI_ROOT/composer.local.json"
         fi
+        rm -f "$COMPOSER_LOCK_STORE" "$COMPOSER_FINGERPRINT_STORE"
         > "$COMPOSER_MANIFEST"
         return
     fi
@@ -439,7 +463,6 @@ COMPOSER_END
     # Fix file ownership so www-data can run Composer.
     # The upstream MW image extracts files owned by UID 1000; the entrypoint
     # runs as root (UID 0). Neither can write these files without chown.
-    log "  Running composer update..."
     cd "$MEDIAWIKI_ROOT"
     chown www-data:www-data "$MEDIAWIKI_ROOT/composer.json" "$MEDIAWIKI_ROOT/composer.local.json"
     [ -f "$MEDIAWIKI_ROOT/composer.lock" ] && chown www-data:www-data "$MEDIAWIKI_ROOT/composer.lock"
@@ -473,6 +496,7 @@ COMPOSER_END
     # merge-plugin does not expand wildcards through the symlinked extensions
     # and skins directories, and silently merges nothing.
     local includes='"composer.local.json"'
+    local merged=()
     local cfg dir kind name
     for cfg in extensions/*/composer.json skins/*/composer.json; do
         [ -f "$cfg" ] || continue
@@ -481,13 +505,51 @@ COMPOSER_END
         name="${dir#*/}"
         if [ -d "$dir/.git" ] || grep -qxF "$name" "/usr/local/share/mediawiki-bundled-${kind}" 2>/dev/null; then
             includes="${includes},\"${cfg}\""
+            merged+=("$cfg")
         fi
     done
     su -s /bin/bash www-data -c "composer config --no-plugins --json extra.merge-plugin.include '[${includes}]'"
-    su -s /bin/bash www-data -c 'composer update --no-dev --no-interaction' || {
+
+    # Resolve against Packagist only when something affecting resolution has
+    # changed; otherwise reinstall the exact versions recorded in the saved lock,
+    # so a routine restart cannot change versions. The fingerprint covers the
+    # image (core's composer.json, its bundled libraries and Composer itself),
+    # the requested packages, and every merged composer.json, since git-managed
+    # extensions can change theirs when they update.
+    local fingerprint saved_fp=""
+    fingerprint=$(cat /usr/local/share/mediawiki-image-fingerprint composer.local.json "${merged[@]}" | sha256sum | cut -d' ' -f1)
+    [ -f "$COMPOSER_FINGERPRINT_STORE" ] && saved_fp=$(cat "$COMPOSER_FINGERPRINT_STORE")
+
+    # Optional download cache volume, so reinstalls are served locally
+    local cache_env=""
+    if [ -d "$COMPOSER_CACHE_MOUNT" ]; then
+        chown www-data:www-data "$COMPOSER_CACHE_MOUNT"
+        cache_env="COMPOSER_CACHE_DIR=$COMPOSER_CACHE_MOUNT "
+        log "  Using Composer download cache at $COMPOSER_CACHE_MOUNT"
+    fi
+
+    if [ -f "$COMPOSER_LOCK_STORE" ] && [ "$fingerprint" = "$saved_fp" ]; then
+        log "  Inputs unchanged - installing locked versions from $COMPOSER_LOCK_STORE"
+        cp "$COMPOSER_LOCK_STORE" composer.lock
+        chown www-data:www-data composer.lock
+        if su -s /bin/bash www-data -c "${cache_env}composer install --no-dev --no-interaction"; then
+            return 0
+        fi
+        log "  WARNING: install from saved lock failed - resolving versions again"
+    else
+        log "  Inputs changed or no saved lock - resolving package versions"
+    fi
+
+    rm -f composer.lock
+    su -s /bin/bash www-data -c "${cache_env}composer update --no-dev --no-interaction" || {
         log "  ERROR: Composer update failed"
         return 1
     }
+    # Record the result only after a successful run, so a failed update is
+    # retried rather than trusted
+    cp composer.lock "$COMPOSER_LOCK_STORE"
+    printf '%s\n' "$fingerprint" > "$COMPOSER_FINGERPRINT_STORE"
+    log "  Saved resolved versions to $COMPOSER_LOCK_STORE"
 }
 
 # Process extensions from environment

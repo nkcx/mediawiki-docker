@@ -273,7 +273,16 @@ MW_COMPOSER_PACKAGES: |
 - If no version is specified it defaults to `*`, which means the **newest release**, not the newest one compatible with your MediaWiki. Extensions declare their supported MediaWiki versions in `extension.json`, which Composer never reads, so it cannot tell. An incompatible extension stops the whole wiki from starting. Pin versions, e.g. `mediawiki/lingo:~3.2.0` (Lingo 3.3.0 requires MediaWiki 1.45)
 - Extensions installed via Composer are loaded automatically; listing them in `MW_EXTENSIONS` as well is optional
 - Git-managed extensions are fetched before Composer runs, so their own `composer.json` dependencies are installed on the first start
-- Composer packages are updated (not just installed) on each container start
+- Package versions are resolved once and saved to `/config/composer.lock`. Later starts reinstall exactly those versions without consulting Packagist, so a restart cannot change what is installed. Versions are resolved again only when the package list, a merged extension's `composer.json`, or the image changes (the last one covers MediaWiki upgrades). To pick up newer releases on purpose, delete `/config/composer.lock`
+
+#### Composer download cache (optional)
+
+Mount a volume at `/composer-cache` to keep Composer's downloads between containers. Reinstalls on restart are then served locally instead of downloaded again. Without it everything still works, but each start downloads the packages again.
+
+```yaml
+volumes:
+  - composer-cache:/composer-cache:z
+```
 
 #### Extension folder names
 
@@ -460,9 +469,11 @@ volumes:
   - extensions:/extensions     # Extension storage
   - skins:/skins              # Skin storage
   - uploads:/var/www/html/images  # User uploads
+  # Optional: Composer download cache, see "Composer download cache"
+  # - composer-cache:/composer-cache
 ```
 
-**Note**: The `config` volume stores generated `LocalSettings.php` and persisted secret keys in `/config/.secrets`.
+**Note**: The `config` volume stores generated `LocalSettings.php`, persisted secret keys in `/config/.secrets`, and the saved Composer versions in `/config/composer.lock`.
 
 ### SELinux hosts require `:z`
 
