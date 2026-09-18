@@ -733,17 +733,30 @@ EOF
 }
 
 # Run database update (critical for version upgrades)
-# True when the wiki schema already exists in the database
+# True when the wiki schema already exists in the database.
+# sql.php can exit 0 while reporting a missing table, so the output is
+# inspected as well as the exit status.
 wiki_is_installed() {
     cd "$MEDIAWIKI_ROOT"
-    php maintenance/run.php sql.php --query="SELECT 1 FROM ${MW_DB_PREFIX:-}user LIMIT 1" >/dev/null 2>&1
+    local out rc
+    out=$(php maintenance/run.php sql.php --query="SELECT 1 FROM ${MW_DB_PREFIX:-}user LIMIT 1" 2>&1) && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ] || printf '%s' "$out" | grep -qiE "doesn't exist|does not exist|no such table|unknown table|error"; then
+        log "  No wiki schema detected (sql.php rc=${rc})"
+        return 1
+    fi
+    log "  Wiki schema present"
+    return 0
 }
 
 # Install MediaWiki into an empty database. update.php cannot bootstrap a
 # fresh database - it fails with "Can not upgrade from versions older than
 # 1.35" - so a greenfield wiki needs install.php first.
 run_database_install() {
-    [ -f "$MEDIAWIKI_ROOT/LocalSettings.php" ] || return 0
+    log "Checking database installation state..."
+    if [ ! -f "$MEDIAWIKI_ROOT/LocalSettings.php" ]; then
+        log "  No LocalSettings.php yet - skipping install check"
+        return 0
+    fi
     cd "$MEDIAWIKI_ROOT"
 
     if wiki_is_installed; then
