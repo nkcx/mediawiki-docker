@@ -6,9 +6,8 @@ EXTENSIONS_MANIFEST="/extensions/.managed-manifest"
 SKINS_MANIFEST="/skins/.managed-manifest"
 COMPOSER_MANIFEST="/extensions/.composer-manifest"
 SECRETS_FILE="/extensions/.secrets"
-COMPOSER_LOCK_STORE="/config/composer.lock"
-COMPOSER_FINGERPRINT_STORE="/config/composer.fingerprint"
 COMPOSER_CACHE_MOUNT="/composer-cache"
+VENDOR_DIR="/var/www/html/vendor"
 
 # Get MediaWiki version from the installation
 get_mediawiki_version() {
@@ -407,7 +406,6 @@ process_composer_env() {
             log "Removing Composer configuration (no packages requested)..."
             rm -f "$MEDIAWIKI_ROOT/composer.local.json"
         fi
-        rm -f "$COMPOSER_LOCK_STORE" "$COMPOSER_FINGERPRINT_STORE"
         > "$COMPOSER_MANIFEST"
         return
     fi
@@ -496,7 +494,6 @@ COMPOSER_END
     # merge-plugin does not expand wildcards through the symlinked extensions
     # and skins directories, and silently merges nothing.
     local includes='"composer.local.json"'
-    local merged=()
     local cfg dir kind name
     for cfg in extensions/*/composer.json skins/*/composer.json; do
         [ -f "$cfg" ] || continue
@@ -505,22 +502,12 @@ COMPOSER_END
         name="${dir#*/}"
         if [ -d "$dir/.git" ] || grep -qxF "$name" "/usr/local/share/mediawiki-bundled-${kind}" 2>/dev/null; then
             includes="${includes},\"${cfg}\""
-            merged+=("$cfg")
         fi
     done
     su -s /bin/bash www-data -c "composer config --no-plugins --json extra.merge-plugin.include '[${includes}]'"
 
-    # Resolve against Packagist only when something affecting resolution has
-    # changed; otherwise reinstall the exact versions recorded in the saved lock,
-    # so a routine restart cannot change versions. The fingerprint covers the
-    # image (core's composer.json, its bundled libraries and Composer itself),
-    # the requested packages, and every merged composer.json, since git-managed
-    # extensions can change theirs when they update.
-    local fingerprint saved_fp=""
-    fingerprint=$(cat /usr/local/share/mediawiki-image-fingerprint composer.local.json "${merged[@]}" | sha256sum | cut -d' ' -f1)
-    [ -f "$COMPOSER_FINGERPRINT_STORE" ] && saved_fp=$(cat "$COMPOSER_FINGERPRINT_STORE")
-
-    # Optional download cache volume, so reinstalls are served locally
+    # Optional download cache volume, so packages whose version has not
+    # changed are installed locally rather than downloaded again
     local cache_env=""
     if [ -d "$COMPOSER_CACHE_MOUNT" ]; then
         chown www-data:www-data "$COMPOSER_CACHE_MOUNT"
@@ -528,28 +515,31 @@ COMPOSER_END
         log "  Using Composer download cache at $COMPOSER_CACHE_MOUNT"
     fi
 
-    if [ -f "$COMPOSER_LOCK_STORE" ] && [ "$fingerprint" = "$saved_fp" ]; then
-        log "  Inputs unchanged - installing locked versions from $COMPOSER_LOCK_STORE"
-        cp "$COMPOSER_LOCK_STORE" composer.lock
-        chown www-data:www-data composer.lock
-        if su -s /bin/bash www-data -c "${cache_env}composer install --no-dev --no-interaction"; then
-            return 0
-        fi
-        log "  WARNING: install from saved lock failed - resolving versions again"
-    else
-        log "  Inputs changed or no saved lock - resolving package versions"
+    # Run on every start, as on a normal install: floating constraints pick up
+    # new releases, and pinned ones in MW_COMPOSER_PACKAGES stay put. vendor/
+    # lives in the container, so it survives restarts and is only rebuilt when
+    # the container is recreated. Composer resolves before it changes anything,
+    # so a failed update (Packagist unreachable, say) leaves installed packages
+    # as they were.
+    log "  Checking for package updates..."
+    if su -s /bin/bash www-data -c "${cache_env}composer update --no-dev --no-interaction"; then
+        return 0
     fi
+    if composer_packages_installed; then
+        log "  WARNING: Composer update failed - continuing with the installed versions"
+        return 0
+    fi
+    log "  ERROR: Composer update failed and requested packages are not installed"
+    return 1
+}
 
-    rm -f composer.lock
-    su -s /bin/bash www-data -c "${cache_env}composer update --no-dev --no-interaction" || {
-        log "  ERROR: Composer update failed"
-        return 1
-    }
-    # Record the result only after a successful run, so a failed update is
-    # retried rather than trusted
-    cp composer.lock "$COMPOSER_LOCK_STORE"
-    printf '%s\n' "$fingerprint" > "$COMPOSER_FINGERPRINT_STORE"
-    log "  Saved resolved versions to $COMPOSER_LOCK_STORE"
+# True when every package in MW_COMPOSER_PACKAGES is already installed in vendor/
+composer_packages_installed() {
+    local installed="$VENDOR_DIR/composer/installed.json" pkg
+    [ -f "$installed" ] || return 1
+    for pkg in "${!DESIRED_COMPOSER[@]}"; do
+        grep -qF "\"name\": \"$pkg\"" "$installed" || return 1
+    done
 }
 
 # Process extensions from environment

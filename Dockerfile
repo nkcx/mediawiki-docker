@@ -48,13 +48,6 @@ RUN find /var/www/html/extensions -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
     && find /var/www/html/skins -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
         > /usr/local/share/mediawiki-bundled-skins
 
-# Fingerprint of everything in the image that affects Composer resolution. The
-# entrypoint re-resolves packages when this changes, so an image upgrade can
-# never reuse a lock built against older core libraries.
-RUN cd /var/www/html \
-    && sha256sum composer.json vendor/composer/installed.json /usr/bin/composer \
-        > /usr/local/share/mediawiki-image-fingerprint
-
 # Copy custom entrypoint script
 COPY scripts/custom-entrypoint.sh /usr/local/bin/custom-entrypoint.sh
 RUN chmod +x /usr/local/bin/custom-entrypoint.sh
