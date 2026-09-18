@@ -510,17 +510,19 @@ COMPOSER_END
     done
     su -s /bin/bash www-data -c "composer config --no-plugins --json extra.merge-plugin.include '[${includes}]'"
 
-    # Resolve against Packagist only when something affecting resolution has
-    # changed; otherwise reinstall the exact versions recorded in the saved lock,
-    # so a routine restart cannot change versions. The fingerprint covers the
-    # image (core's composer.json, its bundled libraries and Composer itself),
-    # the requested packages, and every merged composer.json, since git-managed
-    # extensions can change theirs when they update.
+    # Resolve on every start so floating constraints pick up new releases, the
+    # same way git-managed extensions pull on every start; pin a version in
+    # MW_COMPOSER_PACKAGES to hold it. The last successful result is kept as a
+    # fallback for when resolution fails (e.g. Packagist is unreachable), but
+    # only when nothing that affects resolution has changed since: the image
+    # (core's composer.json, its bundled libraries and Composer itself), the
+    # requested packages, and every merged composer.json. Otherwise an old lock
+    # could reinstall stale core libraries over a newer image.
     local fingerprint saved_fp=""
     fingerprint=$(cat /usr/local/share/mediawiki-image-fingerprint composer.local.json "${merged[@]}" | sha256sum | cut -d' ' -f1)
     [ -f "$COMPOSER_FINGERPRINT_STORE" ] && saved_fp=$(cat "$COMPOSER_FINGERPRINT_STORE")
 
-    # Optional download cache volume, so reinstalls are served locally
+    # Optional download cache volume, so unchanged packages are served locally
     local cache_env=""
     if [ -d "$COMPOSER_CACHE_MOUNT" ]; then
         chown www-data:www-data "$COMPOSER_CACHE_MOUNT"
@@ -528,28 +530,26 @@ COMPOSER_END
         log "  Using Composer download cache at $COMPOSER_CACHE_MOUNT"
     fi
 
+    log "  Resolving package versions..."
+    rm -f composer.lock
+    if su -s /bin/bash www-data -c "${cache_env}composer update --no-dev --no-interaction"; then
+        cp composer.lock "$COMPOSER_LOCK_STORE"
+        printf '%s\n' "$fingerprint" > "$COMPOSER_FINGERPRINT_STORE"
+        log "  Saved as last known good: $COMPOSER_LOCK_STORE"
+        return 0
+    fi
+
     if [ -f "$COMPOSER_LOCK_STORE" ] && [ "$fingerprint" = "$saved_fp" ]; then
-        log "  Inputs unchanged - installing locked versions from $COMPOSER_LOCK_STORE"
+        log "  WARNING: Composer update failed - installing last known good versions from $COMPOSER_LOCK_STORE"
         cp "$COMPOSER_LOCK_STORE" composer.lock
         chown www-data:www-data composer.lock
         if su -s /bin/bash www-data -c "${cache_env}composer install --no-dev --no-interaction"; then
             return 0
         fi
-        log "  WARNING: install from saved lock failed - resolving versions again"
-    else
-        log "  Inputs changed or no saved lock - resolving package versions"
     fi
 
-    rm -f composer.lock
-    su -s /bin/bash www-data -c "${cache_env}composer update --no-dev --no-interaction" || {
-        log "  ERROR: Composer update failed"
-        return 1
-    }
-    # Record the result only after a successful run, so a failed update is
-    # retried rather than trusted
-    cp composer.lock "$COMPOSER_LOCK_STORE"
-    printf '%s\n' "$fingerprint" > "$COMPOSER_FINGERPRINT_STORE"
-    log "  Saved resolved versions to $COMPOSER_LOCK_STORE"
+    log "  ERROR: Composer update failed"
+    return 1
 }
 
 # Process extensions from environment
