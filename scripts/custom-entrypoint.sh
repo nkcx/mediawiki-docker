@@ -527,20 +527,29 @@ load_composer_extensions() {
         # Already handled by the MW_EXTENSIONS loop
         [ -n "${DESIRED_EXTENSIONS[$ext]}" ] && continue
 
-        # The package-name-to-directory guess can be wrong, so only load what
-        # actually exists rather than emitting a call that would fatal.
-        if [ ! -d "/extensions/${ext}" ]; then
-            log "  ${ext}: Composer package installed but /extensions/${ext} not found - not loading"
+        local ext_env load_var load_cmd
+        ext_env=$(echo "$ext" | tr '[:lower:]' '[:upper:]' | tr '-' '_' | tr ' ' '_')
+        load_var="MW_EXT_${ext_env}_LOAD"
+        load_cmd="${!load_var}"
+
+        # Only emit a default wfLoadExtension() when its manifest is actually
+        # readable. The package-name-to-directory guess can be wrong, and a
+        # directory can exist while being unreadable (an SELinux MCS label from
+        # the container that created it, for instance). Either way MediaWiki
+        # would abort with a configuration error and take the whole wiki down,
+        # so skip and say so instead. A custom LOAD override is trusted as-is.
+        if [ -z "$load_cmd" ] && [ ! -r "/extensions/${ext}/extension.json" ]; then
+            if [ -d "/extensions/${ext}" ]; then
+                log "  ${ext}: /extensions/${ext}/extension.json unreadable - not loading"
+            else
+                log "  ${ext}: Composer package installed but /extensions/${ext} not found - not loading"
+            fi
             continue
         fi
 
         log "  ${ext}: Loading (installed by Composer)"
         echo "extension:${ext}:composer" >> "$EXTENSIONS_MANIFEST"
 
-        local ext_env load_var load_cmd
-        ext_env=$(echo "$ext" | tr '[:lower:]' '[:upper:]' | tr '-' '_' | tr ' ' '_')
-        load_var="MW_EXT_${ext_env}_LOAD"
-        load_cmd="${!load_var}"
         [ -z "$load_cmd" ] && load_cmd="wfLoadExtension( '${ext}' );"
         echo "$load_cmd" >> /tmp/extension_loads.txt
     done
