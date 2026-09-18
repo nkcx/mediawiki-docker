@@ -40,6 +40,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python dependencies (if needed in the future)
 # RUN pip3 install --no-cache-dir pyyaml gitpython
 
+# Record which extensions and skins ship with MediaWiki. They share the
+# /extensions and /skins volumes with Composer-installed packages at runtime,
+# and the entrypoint must tell them apart.
+RUN ls -1 /var/www/html/extensions > /usr/local/share/mediawiki-bundled-extensions \
+    && ls -1 /var/www/html/skins > /usr/local/share/mediawiki-bundled-skins
+
 # Copy custom entrypoint script
 COPY scripts/custom-entrypoint.sh /usr/local/bin/custom-entrypoint.sh
 RUN chmod +x /usr/local/bin/custom-entrypoint.sh

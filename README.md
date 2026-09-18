@@ -270,9 +270,29 @@ MW_COMPOSER_PACKAGES: |
 ```
 
 **Notes**:
-- If no version specified, defaults to `*` (latest compatible)
-- Extensions installed via Composer should also be listed in `MW_EXTENSIONS` for loading
+- If no version is specified it defaults to `*`, which means the **newest release**, not the newest one compatible with your MediaWiki. Extensions declare their supported MediaWiki versions in `extension.json`, which Composer never reads, so it cannot tell. An incompatible extension stops the whole wiki from starting. Pin versions, e.g. `mediawiki/lingo:~3.2.0` (Lingo 3.3.0 requires MediaWiki 1.45)
+- Extensions installed via Composer are loaded automatically; listing them in `MW_EXTENSIONS` as well is optional
+- Git-managed extensions are fetched before Composer runs, so their own `composer.json` dependencies are installed on the first start
 - Composer packages are updated (not just installed) on each container start
+
+#### Extension folder names
+
+To load a Composer-installed extension, the entrypoint needs the directory Composer put it in. For `mediawiki/` packages it converts the package name from kebab-case to PascalCase:
+
+| Package | Assumed folder |
+|---------|----------------|
+| `mediawiki/page-forms` | `PageForms` |
+| `mediawiki/semantic-media-wiki` | `SemanticMediaWiki` |
+
+When a package installs somewhere else, set `MW_COMPOSER_<PACKAGE>_FOLDER`. `<PACKAGE>` is the package name uppercased with `/`, `-` and `.` turned into `_`. This also lets a package from a vendor other than `mediawiki/` be loaded as an extension:
+
+```yaml
+MW_COMPOSER_PACKAGES: |
+  acme/wiki-widgets
+MW_COMPOSER_ACME_WIKI_WIDGETS_FOLDER: Widgets
+```
+
+If the folder has no readable `extension.json`, the extension is skipped and the log says so, rather than failing the whole wiki.
 
 #### Complete Composer + Extensions Example
 
@@ -283,10 +303,8 @@ environment:
     mediawiki/semantic-media-wiki:~4.0
     mediawiki/page-forms:^5.3
   
-  # Load extensions (some from Composer, some from git)
+  # Git-managed or bundled extensions. Composer ones load automatically.
   MW_EXTENSIONS: |
-    SemanticMediaWiki
-    PageForms
     Cite
     ParserFunctions
 ```
