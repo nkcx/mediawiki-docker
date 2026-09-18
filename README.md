@@ -446,6 +446,27 @@ volumes:
 
 **Note**: The `config` volume stores generated `LocalSettings.php` and persisted secret keys in `/config/.secrets`.
 
+### SELinux hosts require `:z`
+
+On hosts with SELinux enforcing (Fedora, RHEL, Fedora CoreOS), mount the volumes with `:z`:
+
+```yaml
+volumes:
+  - config:/config:z
+  - extensions:/extensions:z
+  - skins:/skins:z
+  - uploads:/var/www/html/images:z
+```
+
+Composer writes extension directories into the `extensions` volume at runtime, and those directories inherit the MCS category of the container that created them:
+
+```
+/extensions           container_file_t:s0
+/extensions/Maps      container_file_t:s0:c137,c549
+```
+
+Every recreated container gets a different category, so on the *next* deployment the extension becomes unreadable — even to root — and MediaWiki aborts with `Error Loading extension. Unable to open file .../extension.json`. The first deployment succeeds, which makes this easy to miss until a redeploy. `:z` relabels the content as shared and avoids it.
+
 ## Common Use Cases
 
 ### Basic Wiki with Essential Extensions
