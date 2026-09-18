@@ -8,7 +8,6 @@ COMPOSER_MANIFEST="/extensions/.composer-manifest"
 SECRETS_FILE="/extensions/.secrets"
 COMPOSER_CACHE_MOUNT="/composer-cache"
 VENDOR_DIR="/var/www/html/vendor"
-IMAGE_FINGERPRINT="/usr/local/share/mediawiki-image-fingerprint"
 
 # Get MediaWiki version from the installation
 get_mediawiki_version() {
@@ -156,28 +155,6 @@ init_volumes() {
     rm -rf $MEDIAWIKI_ROOT/extensions $MEDIAWIKI_ROOT/skins
     ln -sf /extensions $MEDIAWIKI_ROOT/extensions
     ln -sf /skins $MEDIAWIKI_ROOT/skins
-
-    init_vendor
-}
-
-# vendor/ holds core's own pinned libraries as well as Composer packages. When
-# it is a persisted volume, restore core's copy from the image whenever the
-# image changes (or the volume is new), so core never runs against stale
-# libraries; Composer then re-adds the requested packages.
-init_vendor() {
-    if [ "$(stat -c %d "$VENDOR_DIR")" = "$(stat -c %d "$MEDIAWIKI_ROOT")" ]; then
-        log "  vendor/ is not a volume - Composer packages are reinstalled on every start"
-        return 0
-    fi
-    local marker="$VENDOR_DIR/mediawiki-image-fingerprint"
-    if cmp -s "$IMAGE_FINGERPRINT" "$marker"; then
-        return 0
-    fi
-    log "Restoring vendor/ from the image (new volume or changed image)..."
-    find "$VENDOR_DIR" -mindepth 1 -delete
-    # Not cp -a, which would also copy the image's SELinux labels onto the volume
-    cp -R --preserve=mode,timestamps /usr/local/share/mediawiki-vendor/. "$VENDOR_DIR/"
-    cp "$IMAGE_FINGERPRINT" "$marker"
 }
 
 # Generate stub LocalSettings.php that loads from /config
@@ -539,9 +516,11 @@ COMPOSER_END
     fi
 
     # Run on every start, as on a normal install: floating constraints pick up
-    # new releases, and pinned ones in MW_COMPOSER_PACKAGES stay put. Composer
-    # resolves before it changes anything, so a failed update (Packagist
-    # unreachable, say) leaves the installed packages as they were.
+    # new releases, and pinned ones in MW_COMPOSER_PACKAGES stay put. vendor/
+    # lives in the container, so it survives restarts and is only rebuilt when
+    # the container is recreated. Composer resolves before it changes anything,
+    # so a failed update (Packagist unreachable, say) leaves installed packages
+    # as they were.
     log "  Checking for package updates..."
     if su -s /bin/bash www-data -c "${cache_env}composer update --no-dev --no-interaction"; then
         return 0

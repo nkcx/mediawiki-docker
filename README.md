@@ -274,21 +274,12 @@ MW_COMPOSER_PACKAGES: |
 - Extensions installed via Composer are loaded automatically; listing them in `MW_EXTENSIONS` as well is optional
 - Git-managed extensions are fetched before Composer runs, so their own `composer.json` dependencies are installed on the first start
 - `composer update` runs on every container start, the same way git-managed extensions pull on every start. A floating constraint such as `^14` or `*` picks up new releases on restart; pin a constraint such as `14.2.1` to hold a version
-- Mount the optional `vendor` volume (below) so installed packages persist like on a normal install. Composer then only changes what has actually changed, and if it cannot reach Packagist the start continues with the installed versions. Without the volume, packages are reinstalled on every start and a failed update stops the container
+- `vendor/` lives in the container, so installed packages survive restarts; on a plain restart Composer only changes what has changed, and if it cannot reach Packagist the start continues with the installed versions. Packages are reinstalled when the container is recreated (a deploy), which needs network access
 - A new release that installs cleanly but is incompatible with your MediaWiki will still be picked up, since Composer cannot see MediaWiki compatibility. Pin anything you cannot afford to have change under you
-
-#### Persisting vendor/ (recommended)
-
-```yaml
-volumes:
-  - vendor:/var/www/html/vendor:z
-```
-
-Mount it at exactly this path, not via a symlink: Composer's autoloader derives file locations from the real path of `vendor/`. It holds core's own libraries as well as Composer packages, so whenever the image changes (a MediaWiki upgrade, or a rebuild) the entrypoint restores core's copy from the image and `composer update` re-adds your packages. That step needs network access.
 
 #### Composer download cache (optional)
 
-Mount a volume at `/composer-cache` to keep Composer's downloads between containers. Packages whose version has not changed are then installed from the cache rather than downloaded again, which mostly matters without the `vendor` volume or after an image upgrade.
+Mount a volume at `/composer-cache` to keep Composer's downloads between containers. When the container is recreated, packages whose version has not changed are installed from the cache rather than downloaded again.
 
 ```yaml
 volumes:
@@ -480,8 +471,6 @@ volumes:
   - extensions:/extensions     # Extension storage
   - skins:/skins              # Skin storage
   - uploads:/var/www/html/images  # User uploads
-  # Recommended with Composer packages, see "Persisting vendor/"
-  # - vendor:/var/www/html/vendor
   # Optional: Composer download cache, see "Composer download cache"
   # - composer-cache:/composer-cache
 ```

@@ -48,16 +48,6 @@ RUN find /var/www/html/extensions -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
     && find /var/www/html/skins -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
         > /usr/local/share/mediawiki-bundled-skins
 
-# Clean copy of core's vendor/. A persisted vendor volume is restored from it
-# whenever the image changes, so core never runs against stale libraries.
-RUN cp -a /var/www/html/vendor /usr/local/share/mediawiki-vendor
-
-# Fingerprint of everything in the image that vendor/ depends on. A persisted
-# vendor volume records it, and is restored from the image when it differs.
-RUN cd /var/www/html \
-    && sha256sum composer.json vendor/composer/installed.json /usr/bin/composer \
-        > /usr/local/share/mediawiki-image-fingerprint
-
 # Copy custom entrypoint script
 COPY scripts/custom-entrypoint.sh /usr/local/bin/custom-entrypoint.sh
 RUN chmod +x /usr/local/bin/custom-entrypoint.sh
