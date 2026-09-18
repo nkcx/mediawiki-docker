@@ -678,7 +678,10 @@ $wgEnableUserEmail = getenv('MW_ENABLE_USER_EMAIL') === 'true';
 
 # Uploads
 $wgEnableUploads = getenv('MW_ENABLE_UPLOADS') === 'true';
-$wgLogo = getenv('MW_LOGO') ?: '';
+# An empty logo makes getAvailableLogos() yield no '1x' entry, and the
+# siteinfo API then calls UrlUtils::expand(null) and throws a TypeError.
+# Fall back to core's placeholder, which is what install.php writes.
+$wgLogo = getenv('MW_LOGO') ?: '/resources/assets/change-your-logo.svg';
 
 # Authentication
 $wgAuthenticationTokenVersion = "1";
